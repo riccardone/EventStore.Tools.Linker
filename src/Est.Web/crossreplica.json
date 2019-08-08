@@ -1,0 +1,21 @@
+﻿{
+  "replicas": [
+    {
+      "name": "ciccio", 
+      "from": {
+        "connectionString": "tcp://localhost:1113",
+        "username": "admin",
+        "password": "changeit"
+      },
+      "to": {
+        "connectionString": "tcp://localhost:1114",
+        "username": "admin",
+        "password": "changeit"
+      },
+      "filters": [],
+      "savePositionInterval": 1000,
+      "autoStart": true,
+      "handleConflicts": true
+    }
+  ]
+}
