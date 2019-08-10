@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Text;
-using Est.GeoReplica;
-using Est.GeoReplica.Plugin;
+using Est.CrossClusterReplication;
+using Est.CrossClusterReplication.Contracts;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
 using Moq;
 using NUnit.Framework;
 
-namespace Estr.Tests
+namespace Est.Tests
 {
     public class ReplicaServiceTests
     {

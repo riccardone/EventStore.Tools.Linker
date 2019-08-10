@@ -3,17 +3,17 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29102.190
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Est.GeoReplica", "Est.GeoReplica\Est.GeoReplica.csproj", "{C1CE3CA8-8407-4BD7-A320-7EBEB4596AB3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Est.CrossClusterReplication", "Est.CrossClusterReplication\Est.CrossClusterReplication.csproj", "{A59AF2B3-EDF9-4D99-8826-570B908F8E26}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Estr.Tests", "Estr.Tests\Estr.Tests.csproj", "{E4436C0B-4CDD-4F23-8D73-5B97FC1C45DE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Est.CrossClusterReplication.Contracts", "Est.CrossClusterReplication.Contracts\Est.CrossClusterReplication.Contracts.csproj", "{D435BF89-372B-42FF-92C5-21B014D2F754}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Est.CrossClusterReplication", "Est.CrossClusterReplication\Est.CrossClusterReplication.csproj", "{A59AF2B3-EDF9-4D99-8826-570B908F8E26}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Est.CrossClusterReplication.Model", "Est.CrossClusterReplication.Model\Est.CrossClusterReplication.Model.csproj", "{0BA6EB7D-C290-46F3-95F6-B24516FDF089}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Est.CrossClusterReplication.Contracts", "Est.CrossClusterReplication.Contracts\Est.CrossClusterReplication.Contracts.csproj", "{D435BF89-372B-42FF-92C5-21B014D2F754}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Est.Web", "Est.Web\Est.Web.csproj", "{7129FCC1-98ED-441D-93F4-C8AF1AD43C0C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Est.CrossClusterReplication.Model", "Est.CrossClusterReplication.Model\Est.CrossClusterReplication.Model.csproj", "{0BA6EB7D-C290-46F3-95F6-B24516FDF089}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Est.Tests", "Est.Tests\Est.Tests.csproj", "{446DDA1D-3E77-4FA1-AF6F-E962A5B0AC3B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Est.Web", "Est.Web\Est.Web.csproj", "{7129FCC1-98ED-441D-93F4-C8AF1AD43C0C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Est.CrossClusterReplication.Config.LiteDb", "Est.CrossClusterReplication.Config.LiteDb\Est.CrossClusterReplication.Config.LiteDb.csproj", "{9CD97B24-1FAD-493E-A25D-C6BAB365608A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,14 +21,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{C1CE3CA8-8407-4BD7-A320-7EBEB4596AB3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C1CE3CA8-8407-4BD7-A320-7EBEB4596AB3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C1CE3CA8-8407-4BD7-A320-7EBEB4596AB3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C1CE3CA8-8407-4BD7-A320-7EBEB4596AB3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E4436C0B-4CDD-4F23-8D73-5B97FC1C45DE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E4436C0B-4CDD-4F23-8D73-5B97FC1C45DE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E4436C0B-4CDD-4F23-8D73-5B97FC1C45DE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E4436C0B-4CDD-4F23-8D73-5B97FC1C45DE}.Release|Any CPU.Build.0 = Release|Any CPU
 		{A59AF2B3-EDF9-4D99-8826-570B908F8E26}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A59AF2B3-EDF9-4D99-8826-570B908F8E26}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A59AF2B3-EDF9-4D99-8826-570B908F8E26}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -45,6 +37,14 @@ Global
 		{7129FCC1-98ED-441D-93F4-C8AF1AD43C0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7129FCC1-98ED-441D-93F4-C8AF1AD43C0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7129FCC1-98ED-441D-93F4-C8AF1AD43C0C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{446DDA1D-3E77-4FA1-AF6F-E962A5B0AC3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{446DDA1D-3E77-4FA1-AF6F-E962A5B0AC3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{446DDA1D-3E77-4FA1-AF6F-E962A5B0AC3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{446DDA1D-3E77-4FA1-AF6F-E962A5B0AC3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CD97B24-1FAD-493E-A25D-C6BAB365608A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CD97B24-1FAD-493E-A25D-C6BAB365608A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CD97B24-1FAD-493E-A25D-C6BAB365608A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CD97B24-1FAD-493E-A25D-C6BAB365608A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
