@@ -109,29 +109,6 @@ namespace Est.CrossClusterReplication
             return Task.FromResult(true);
         }
 
-        //public async Task<bool> TryHandle(IDictionary<string, dynamic> request)
-        //{
-        //    if (!_replicaHelper.IsExternalRequestValid(request))
-        //        return false;
-        //    //if (!string.Equals(request["ServiceType"], _geoReplicaModel.ToString(),
-        //    //    StringComparison.InvariantCultureIgnoreCase))
-        //    //    return false;
-        //    if (!string.Equals(request["Name"], _to.ToString(), StringComparison.InvariantCultureIgnoreCase))
-        //        return false;
-
-        //    if (request["Action"] == "Start")
-        //    {
-        //        await Start();
-        //        Log.Info($"{request["ServiceType"]} to '{_to}' started");
-        //    }
-        //    else if (request["Action"] == "Stop")
-        //    {
-        //        await Stop();
-        //        Log.Info($"{request["ServiceType"]} to '{_to}' stopped");
-        //    }
-        //    return true;
-        //}
-
         private void Processor_Elapsed(object sender, ElapsedEventArgs e)
         {
             if (_internalBuffer.IsEmpty)
@@ -328,7 +305,7 @@ namespace Est.CrossClusterReplication
                 return Task.CompletedTask;
             }
 
-            // Backpressure
+            // Back-pressure
             if (_internalBuffer.Count >= _perfTunedSettings.MaxBufferSize)
                 _allCatchUpSubscription?.Stop();
 
