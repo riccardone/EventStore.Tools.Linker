@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LiteDB" Version="4.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Est.CrossClusterReplication.Contracts\Est.CrossClusterReplication.Contracts.csproj" />
+    <ProjectReference Include="..\Est.CrossClusterReplication.Model\Est.CrossClusterReplication.Model.csproj" />
+  </ItemGroup>
+
+</Project>
