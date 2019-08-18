@@ -1,4 +1,4 @@
-﻿namespace Est.CrossClusterReplication.Contracts
+﻿namespace Est.CrossClusterReplication
 {
     public interface IFilterService
     {
