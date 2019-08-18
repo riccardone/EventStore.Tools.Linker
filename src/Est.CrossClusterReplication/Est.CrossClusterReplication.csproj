@@ -2,6 +2,15 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <Authors>Riccardo Di Nuzzo</Authors>
+    <Product>EventStoreReplica</Product>
+    <PackageId>EventStoreReplica</PackageId>
+    <PackageProjectUrl>https://github.com/riccardone/eventstore-tools</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/riccardone/eventstore-tools</RepositoryUrl>
+    <RepositoryType>Github</RepositoryType>
+    <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
+    <PackageReleaseNotes>start</PackageReleaseNotes>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
