@@ -9,7 +9,7 @@ using NLog;
 
 namespace Est.CrossClusterReplication
 {
-    public class ReplicaService
+    public class ReplicaService : IReplicaService
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private readonly IPositionRepository _positionRepository;
@@ -17,7 +17,6 @@ namespace Est.CrossClusterReplication
         private readonly bool _handleConflicts;
         private Position _lastPosition;
         private EventStoreAllCatchUpSubscription _allCatchUpSubscription;
-        public bool AutoStart { get; }
         public string Name { get; }
         private readonly IConnectionBuilder _connectionBuilderForOrigin;
         private readonly IConnectionBuilder _connectionBuilderForDestination;
@@ -41,7 +40,6 @@ namespace Est.CrossClusterReplication
             Ensure.NotNull(positionRepository, nameof(positionRepository));
 
             Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
-            AutoStart = true;
             _connectionBuilderForOrigin = originBuilder;
             _connectionBuilderForDestination = destinationBuilder;
             _positionRepository = positionRepository;
@@ -222,7 +220,6 @@ namespace Est.CrossClusterReplication
                 {"from", _connectionBuilderForOrigin.ConnectionName },
                 {"to", _connectionBuilderForDestination.ConnectionName },
                 {"isRunning", _started},
-                {"autoStart", AutoStart},
                 {"lastPosition", _lastPosition},
                 {"messagesPerSeconds", _processedMessagesPerSeconds}
             };
@@ -281,7 +278,7 @@ namespace Est.CrossClusterReplication
             return Task.CompletedTask;
         }
 
-        public Task EventAppeared(BufferedEvent resolvedEvent)
+        internal Task EventAppeared(BufferedEvent resolvedEvent)
         {
             if (!_replicaHelper.IsValidForReplica(resolvedEvent.EventData.Type, resolvedEvent.StreamId,
                 resolvedEvent.OriginalPosition, _positionRepository.PositionEventType, _filterService))
