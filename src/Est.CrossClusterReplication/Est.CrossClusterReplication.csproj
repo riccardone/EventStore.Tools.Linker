@@ -1,18 +1,22 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <Authors>Riccardo Di Nuzzo</Authors>
+    <Product>EventStoreReplica</Product>
+    <PackageId>EventStoreReplica</PackageId>
+    <PackageProjectUrl>https://github.com/riccardone/eventstore-tools</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/riccardone/eventstore-tools</RepositoryUrl>
+    <RepositoryType>Github</RepositoryType>
+    <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
+    <PackageReleaseNotes>start</PackageReleaseNotes>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="EventStore.Client" Version="5.0.2" />
     <PackageReference Include="microsoft.csharp" Version="4.5.0" />
     <PackageReference Include="NLog" Version="4.6.6" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Est.CrossClusterReplication.Contracts\Est.CrossClusterReplication.Contracts.csproj" />
-    <ProjectReference Include="..\Est.CrossClusterReplication.Model\Est.CrossClusterReplication.Model.csproj" />
   </ItemGroup>
 
 </Project>

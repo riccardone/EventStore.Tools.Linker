@@ -4,7 +4,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Timers;
-using Est.CrossClusterReplication.Contracts;
 using EventStore.ClientAPI;
 using Newtonsoft.Json;
 using NLog;
@@ -37,8 +36,7 @@ namespace Est.CrossClusterReplication
             if (_lastSavedPosition.Equals(_position))
                 return;
             _connection.AppendToStreamAsync(_positionStreamName, ExpectedVersion.Any,
-                new[] { new EventData(Guid.NewGuid(), PositionEventType, true, SerializeObject(_position), null) },
-                _anotherConnectionBuilder.Credentials);
+                new[] { new EventData(Guid.NewGuid(), PositionEventType, true, SerializeObject(_position), null) });
             _lastSavedPosition = _position;
         }
 
@@ -75,8 +73,7 @@ namespace Est.CrossClusterReplication
             try
             {
                 _connection?.SetStreamMetadataAsync(_positionStreamName, ExpectedVersion.Any,
-                    SerializeObject(new Dictionary<string, int> { { "$maxCount", 1 } }),
-                    _anotherConnectionBuilder.Credentials);
+                    SerializeObject(new Dictionary<string, int> { { "$maxCount", 1 } }));
             }
             catch (Exception ex)
             {
@@ -88,7 +85,7 @@ namespace Est.CrossClusterReplication
         {
             try
             {
-                var evts = _connection.ReadStreamEventsBackwardAsync(_positionStreamName, StreamPosition.End, 10, true, _anotherConnectionBuilder.Credentials).Result;
+                var evts = _connection.ReadStreamEventsBackwardAsync(_positionStreamName, StreamPosition.End, 10, true).Result;
                 _position = evts.Events.Any()
                     ? DeserializeObject<Position>(evts.Events[0].OriginalEvent.Data)
                     : Position.Start;
