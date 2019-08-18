@@ -9,19 +9,6 @@ namespace Est.CrossClusterReplication
 {
     public class ReplicaHelper
     {
-        public bool IsExternalRequestValid(IDictionary<string, dynamic> request)
-        {
-            if (request == null)
-                return false;
-            if (!request.ContainsKey("ServiceType"))
-                return false;
-            if (!request.ContainsKey("Action"))
-                return false;
-            if (!request.ContainsKey("Name"))
-                return false;
-            return true;
-        }
-
         public PerfTuneSettings OptimizeSettings(long lastExecutionTime, PerfTuneSettings currentPerfTuneSettings, int maxBufferSizeLimit = 1500, double differentialLimit = 1.10, int geoReplicaClock = 1000)
         {
             if (differentialLimit > 1.50)
