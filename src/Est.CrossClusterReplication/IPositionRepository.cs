@@ -1,7 +1,7 @@
 ﻿using System.Threading.Tasks;
 using EventStore.ClientAPI;
 
-namespace Est.CrossClusterReplication.Contracts
+namespace Est.CrossClusterReplication
 {
     public interface IPositionRepository
     {

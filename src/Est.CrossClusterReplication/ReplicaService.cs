@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Timers;
-using Est.CrossClusterReplication.Contracts;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.Exceptions;
 using NLog;
@@ -15,15 +14,15 @@ namespace Est.CrossClusterReplication
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private readonly IPositionRepository _positionRepository;
         private readonly IFilterService _filterService;
-        private readonly int _savePositionInterval;
+        private readonly bool _handleConflicts;
         private Position _lastPosition;
         private EventStoreAllCatchUpSubscription _allCatchUpSubscription;
         public bool AutoStart { get; }
         public string Name { get; }
-        private readonly IConnectionBuilder _connectionBuilderForSubscriber;
-        private readonly IConnectionBuilder _connectionBuilderForAppender;
-        private IEventStoreConnection _appenderConnection;
-        private IEventStoreConnection _subscriberConnection;
+        private readonly IConnectionBuilder _connectionBuilderForOrigin;
+        private readonly IConnectionBuilder _connectionBuilderForDestination;
+        private IEventStoreConnection _destinationConnection;
+        private IEventStoreConnection _originConnection;
         private bool _started;
         private int _totalProcessedMessagesCurrent;
         private int _totalProcessedMessagesPerSecondsPrevious;
@@ -34,26 +33,25 @@ namespace Est.CrossClusterReplication
         private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new ConcurrentQueue<BufferedEvent>();
         private readonly Timer _processor;
 
-        public ReplicaService(IConnectionBuilder subscriberBuilder, IConnectionBuilder appenderBuilder,
-            IPositionRepository positionRepository, IFilterService filterService, int flushInterval,
-            int savePositionInterval)
+        public ReplicaService(IConnectionBuilder originBuilder, IConnectionBuilder destinationBuilder,
+            IPositionRepository positionRepository, IFilterService filterService, int synchronisationInterval, bool handleConflicts)
         {
-            Ensure.NotNull(subscriberBuilder, nameof(subscriberBuilder));
-            Ensure.NotNull(appenderBuilder, nameof(appenderBuilder));
+            Ensure.NotNull(originBuilder, nameof(originBuilder));
+            Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
             Ensure.NotNull(positionRepository, nameof(positionRepository));
 
-            Name = $"Replica From-{subscriberBuilder.ConnectionName}-To-{appenderBuilder.ConnectionName}";
+            Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
             AutoStart = true;
-            _connectionBuilderForSubscriber = subscriberBuilder;
-            _connectionBuilderForAppender = appenderBuilder;
+            _connectionBuilderForOrigin = originBuilder;
+            _connectionBuilderForDestination = destinationBuilder;
             _positionRepository = positionRepository;
             _filterService = filterService;
-            _savePositionInterval = savePositionInterval;
+            _handleConflicts = handleConflicts;
 
             _timerForStats = new Timer(1000);
             _timerForStats.Elapsed += _timerForStats_Elapsed;
 
-            _processor = new Timer(flushInterval);
+            _processor = new Timer(synchronisationInterval);
             _processor.Elapsed += Processor_Elapsed;
 
             _replicaHelper = new ReplicaHelper();
@@ -61,23 +59,23 @@ namespace Est.CrossClusterReplication
 
         public async Task<bool> Start()
         {
-            _appenderConnection?.Close();
-            _appenderConnection = _connectionBuilderForAppender.Build();
-            _appenderConnection.ErrorOccurred += AppenderConnection_ErrorOccurred;
-            _appenderConnection.Disconnected += AppenderConnection_Disconnected;
-            _appenderConnection.AuthenticationFailed += AppenderConnection_AuthenticationFailed;
-            _appenderConnection.Connected += AppenderConnection_Connected;
-            _appenderConnection.Reconnecting += _appenderConnection_Reconnecting;
-            await _appenderConnection.ConnectAsync();
+            _destinationConnection?.Close();
+            _destinationConnection = _connectionBuilderForDestination.Build();
+            _destinationConnection.ErrorOccurred += DestinationConnection_ErrorOccurred;
+            _destinationConnection.Disconnected += DestinationConnection_Disconnected;
+            _destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
+            _destinationConnection.Connected += DestinationConnection_Connected;
+            _destinationConnection.Reconnecting += _destinationConnection_Reconnecting;
+            await _destinationConnection.ConnectAsync();
 
-            _subscriberConnection?.Close();
-            _subscriberConnection = _connectionBuilderForSubscriber.Build();
-            _subscriberConnection.ErrorOccurred += SubscriberConnection_ErrorOccurred;
-            _subscriberConnection.Disconnected += SubscriberConnection_Disconnected;
-            _subscriberConnection.AuthenticationFailed += SubscriberConnection_AuthenticationFailed;
-            _subscriberConnection.Connected += SubscriberConnection_Connected;
-            _subscriberConnection.Reconnecting += _subscriberConnection_Reconnecting;
-            await _subscriberConnection.ConnectAsync();
+            _originConnection?.Close();
+            _originConnection = _connectionBuilderForOrigin.Build();
+            _originConnection.ErrorOccurred += OriginConnection_ErrorOccurred;
+            _originConnection.Disconnected += OriginConnection_Disconnected;
+            _originConnection.AuthenticationFailed += OriginConnection_AuthenticationFailed;
+            _originConnection.Connected += OriginConnection_Connected;
+            _originConnection.Reconnecting += _originConnection_Reconnecting;
+            await _originConnection.ConnectAsync();
 
             Log.Info($"{Name} started");
             return true;
@@ -85,22 +83,22 @@ namespace Est.CrossClusterReplication
 
         public Task<bool> Stop()
         {
-            _appenderConnection.ErrorOccurred -= AppenderConnection_ErrorOccurred;
-            _appenderConnection.Disconnected -= AppenderConnection_Disconnected;
-            _appenderConnection.AuthenticationFailed += AppenderConnection_AuthenticationFailed;
-            _appenderConnection.Connected -= AppenderConnection_Connected;
-            _appenderConnection.Reconnecting -= _appenderConnection_Reconnecting;
+            _destinationConnection.ErrorOccurred -= DestinationConnection_ErrorOccurred;
+            _destinationConnection.Disconnected -= DestinationConnection_Disconnected;
+            _destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
+            _destinationConnection.Connected -= DestinationConnection_Connected;
+            _destinationConnection.Reconnecting -= _destinationConnection_Reconnecting;
 
-            _subscriberConnection.ErrorOccurred -= SubscriberConnection_ErrorOccurred;
-            _subscriberConnection.Disconnected -= SubscriberConnection_Disconnected;
-            _subscriberConnection.AuthenticationFailed -= SubscriberConnection_AuthenticationFailed;
-            _subscriberConnection.Connected -= SubscriberConnection_Connected;
-            _subscriberConnection.Reconnecting -= _subscriberConnection_Reconnecting;
+            _originConnection.ErrorOccurred -= OriginConnection_ErrorOccurred;
+            _originConnection.Disconnected -= OriginConnection_Disconnected;
+            _originConnection.AuthenticationFailed -= OriginConnection_AuthenticationFailed;
+            _originConnection.Connected -= OriginConnection_Connected;
+            _originConnection.Reconnecting -= _originConnection_Reconnecting;
 
             _processor.Stop();
             _allCatchUpSubscription?.Stop();
-            _appenderConnection?.Close();
-            _subscriberConnection?.Close();
+            _destinationConnection?.Close();
+            _originConnection?.Close();
             _positionRepository.Stop();
             _timerForStats.Stop();
             _totalProcessedMessagesCurrent = 0;
@@ -148,22 +146,22 @@ namespace Est.CrossClusterReplication
             _totalProcessedMessagesPerSecondsPrevious = current;
         }
 
-        private void _subscriberConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
+        private void _originConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
         {
-            Log.Debug($"{Name} Subscriber Reconnecting...");
+            Log.Debug($"{Name} Origin Reconnecting...");
         }
 
-        private void _appenderConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
+        private void _destinationConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
         {
-            Log.Debug($"{Name} Appender Reconnecting...");
+            Log.Debug($"{Name} Destination Reconnecting...");
         }
 
-        private static void SubscriberConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
+        private void OriginConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
         {
-            Log.Warn($"AuthenticationFailed to local instance: {e.Reason}");
+            Log.Warn($"AuthenticationFailed to {_originConnection.ConnectionName}: {e.Reason}");
         }
 
-        private void SubscriberConnection_Connected(object sender, ClientConnectionEventArgs e)
+        private void OriginConnection_Connected(object sender, ClientConnectionEventArgs e)
         {
             Log.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
             _positionRepository.Start();
@@ -176,44 +174,44 @@ namespace Est.CrossClusterReplication
             _started = true;
         }
 
-        private void SubscriberConnection_Disconnected(object sender, ClientConnectionEventArgs e)
+        private void OriginConnection_Disconnected(object sender, ClientConnectionEventArgs e)
         {
             Log.Warn($"{Name} disconnected from {e.RemoteEndPoint}");
             Stop();
             Start();
         }
 
-        private void SubscriberConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
+        private void OriginConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
         {
             Log.Error(e.Exception.GetBaseException().Message);
             Stop();
             Start();
         }
 
-        private void AppenderConnection_Connected(object sender, ClientConnectionEventArgs e)
+        private void DestinationConnection_Connected(object sender, ClientConnectionEventArgs e)
         {
-            Log.Debug($"AppenderConnection Connected to: {e.RemoteEndPoint}");
+            Log.Debug($"{_destinationConnection.ConnectionName} Connected to: {e.RemoteEndPoint}");
         }
 
-        private void AppenderConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
+        private void DestinationConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
         {
-            Log.Warn("AuthenticationFailed while subscribefromall {Reason}", e.Reason);
+            Log.Warn($"AuthenticationFailed with {_destinationConnection.ConnectionName}: {e.Reason}");
             if (!_started) return;
             Log.Warn($"Restart {Name}...");
             Stop();
             Start();
         }
 
-        private void AppenderConnection_Disconnected(object sender, ClientConnectionEventArgs e)
+        private void DestinationConnection_Disconnected(object sender, ClientConnectionEventArgs e)
         {
-            Log.Warn("Disconnected while subscribefromall from '{endpoint}'", e.RemoteEndPoint);
+            Log.Warn($"{_destinationConnection.ConnectionName} disconnected from '{e.RemoteEndPoint}'");
             Stop();
             Start();
         }
 
-        private static void AppenderConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
+        private void DestinationConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
         {
-            Log.Error("Error while subscribefromall: {error}", e.Exception.GetBaseException().Message);
+            Log.Error($"Error with {_destinationConnection.ConnectionName}: {e.Exception.GetBaseException().Message}");
         }
 
         public IDictionary<string, dynamic> GetStats()
@@ -221,8 +219,8 @@ namespace Est.CrossClusterReplication
             return new Dictionary<string, dynamic>
             {
                 {"serviceType", "crossReplica"},
-                {"from", _connectionBuilderForSubscriber.ConnectionName },
-                {"to", _connectionBuilderForAppender.ConnectionName },
+                {"from", _connectionBuilderForOrigin.ConnectionName },
+                {"to", _connectionBuilderForDestination.ConnectionName },
                 {"isRunning", _started},
                 {"autoStart", AutoStart},
                 {"lastPosition", _lastPosition},
@@ -232,7 +230,7 @@ namespace Est.CrossClusterReplication
 
         private void Subscribe(Position position)
         {
-            _allCatchUpSubscription = _subscriberConnection.SubscribeToAllFrom(position,
+            _allCatchUpSubscription = _originConnection.SubscribeToAllFrom(position,
                 BuildSubscriptionSettings(), EventAppeared, LiveProcessingStarted, SubscriptionDropped);
             Log.Debug($"Subscribed from position: {position}");
         }
@@ -248,7 +246,6 @@ namespace Est.CrossClusterReplication
             Log.Warn($"Cross Replica Resubscribing... (reason: {subscriptionDropReason})");
             if (arg3 != null)
                 Log.Error($"exception: {arg3.GetBaseException().Message}");
-            // TODO review this getlastposition as maybe it is responsible to get many un-necessary idempotent writes
             _lastPosition = _positionRepository.Get();
             Subscribe(_lastPosition);
         }
@@ -294,7 +291,7 @@ namespace Est.CrossClusterReplication
             }
 
             IDictionary<string, dynamic> enrichedMetadata;
-            var origin = _connectionBuilderForSubscriber.ConnectionName;
+            var origin = _connectionBuilderForOrigin.ConnectionName;
             if (!_replicaHelper.TryProcessMetadata(resolvedEvent.StreamId, resolvedEvent.EventNumber,
                 resolvedEvent.Created, origin,
                 _replicaHelper.DeserializeObject(resolvedEvent.EventData.Metadata) ?? new Dictionary<string, dynamic>(),
@@ -327,9 +324,8 @@ namespace Est.CrossClusterReplication
                 while (_internalBuffer.TryDequeue(out ev))
                 {
                     var ev1 = ev;
-                    tasks.Add(_appenderConnection
-                        .AppendToStreamAsync(ev.StreamId, ev.EventNumber - 1, new[] { ev.EventData },
-                            _connectionBuilderForAppender.Credentials).ContinueWith(a =>
+                    tasks.Add(_destinationConnection
+                        .AppendToStreamAsync(ev.StreamId, ev.EventNumber - 1, new[] { ev.EventData }).ContinueWith(a =>
                         {
                             if (a.Exception?.InnerException is WrongExpectedVersionException)
                             {
@@ -367,21 +363,21 @@ namespace Est.CrossClusterReplication
             try
             {
                 enrichedMetadata.Add("$error", exception.GetBaseException().Message);
-                //if (_to.HandleConflicts)
-                //{
-                //    var conflictStreamId = $"$conflicts-from-{_connectionBuilderForSubscriber.ConnectionName}-to-{_connectionBuilderForAppender.ConnectionName}";
-                //    _appenderConnection.AppendToStreamAsync(conflictStreamId, ExpectedVersion.Any, new[]
-                //    {
-                //        new EventData(eventId, eventType, isJson, data, _replicaHelper.SerializeObject(enrichedMetadata))
-                //    }, _connectionBuilderForAppender.Credentials).Wait();
-                //}
-                //else
-                //{
-                _appenderConnection.AppendToStreamAsync(eventStreamId, ExpectedVersion.Any, new[]
+                if (_handleConflicts)
+                {
+                    var conflictStreamId = $"$conflicts-from-{_connectionBuilderForOrigin.ConnectionName}-to-{_connectionBuilderForDestination.ConnectionName}";
+                    _destinationConnection.AppendToStreamAsync(conflictStreamId, ExpectedVersion.Any, new[]
+                    {
+                        new EventData(eventId, eventType, isJson, data, _replicaHelper.SerializeObject(enrichedMetadata))
+                    }).Wait();
+                }
+                else
+                {
+                    _destinationConnection.AppendToStreamAsync(eventStreamId, ExpectedVersion.Any, new[]
                 {
                         new EventData(eventId, eventType, isJson, data, _replicaHelper.SerializeObject(enrichedMetadata))
-                    }, _connectionBuilderForAppender.Credentials).Wait();
-                //}
+                    }).Wait();
+                }
 
                 return true;
             }
