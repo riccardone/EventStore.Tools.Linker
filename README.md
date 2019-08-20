@@ -23,8 +23,8 @@ class Program
             var origin = new ConnectionBuilder(new Uri("tcp://localhost:1112"), connSettings, "origin-01");
             var destination = new ConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
             var positionRepo = new PositionRepository($"PositionStream-{destination.ConnectionName}", "PositionUpdated", destination);
-            var sut = new ReplicaService(origin, destination, positionRepo, null, 1000, false);
-            sut.Start().Wait();
+            var service = new ReplicaService(origin, destination, positionRepo, null, 1000, false);
+            service.Start().Wait();
             Log.Info("Replica Service started");            
             Log.Info("Press enter to exit the program");
             Console.ReadLine();
