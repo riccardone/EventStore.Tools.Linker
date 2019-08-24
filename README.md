@@ -37,7 +37,7 @@ To use the ReplicaService you pass the origin and the destination of the data re
 One of the problem that this tool solves is related to the lack of built-in backpressure management in the EventStore client's and api's. Running the replication with this program, the logic will continuosly adapt the network settings depending on the number of events being replicated.
   
 # Next development  
-As soon as I have time, I will start building a UI/service to manage and monitor the cross cluster replica between EventStore's. It could be done as a Web application and/or as a Cli program. Get in touch if you are willing to help (...open an issue on this repo).
+As soon as I have time, I will start building a UI/service to manage and monitor the cross cluster replica between EventStore's. It could be done as a Web application and/or as a Cli program. If you are willing to help open an issue on this repo and get in touch.
   
 # EventStore
 The database being replicated is EventStore https://eventstore.org/   
