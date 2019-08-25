@@ -1,6 +1,5 @@
 ﻿using System;
 using EventStore.ClientAPI;
-using EventStore.ClientAPI.SystemData;
 
 namespace Est.CrossClusterReplication
 {
