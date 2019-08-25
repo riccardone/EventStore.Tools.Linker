@@ -9,8 +9,9 @@
     <RepositoryUrl>https://github.com/riccardone/eventstore-tools</RepositoryUrl>
     <RepositoryType>Github</RepositoryType>
     <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
-    <PackageReleaseNotes>start</PackageReleaseNotes>
+    <PackageReleaseNotes>using config object for replica settings</PackageReleaseNotes>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
