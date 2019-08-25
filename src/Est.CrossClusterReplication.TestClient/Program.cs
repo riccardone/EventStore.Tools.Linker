@@ -28,7 +28,7 @@ namespace Est.CrossClusterReplication.TestClient
                     new ReplicaFilter(FilterType.EventType, "User*", FilterOperation.Include),
                     new ReplicaFilter(FilterType.Stream, "domain-*", FilterOperation.Include),
                     new ReplicaFilter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
-                }), 1000, false);
+                }), ReplicaSettings.Default());
             service.Start().Wait();
             Log.Info("Replica Service started");
             TestReplicaForSampleEvent(connSettings, destination, "test", "ReplicaTested");
