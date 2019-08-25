@@ -1,4 +1,4 @@
-﻿namespace Est.CrossClusterReplication.Model
+﻿namespace Est.CrossClusterReplication
 {
     public enum FilterOperation
     {
