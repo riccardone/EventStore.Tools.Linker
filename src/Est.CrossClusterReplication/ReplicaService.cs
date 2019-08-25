@@ -28,12 +28,12 @@ namespace Est.CrossClusterReplication
         private int _processedMessagesPerSeconds;
         private readonly Timer _timerForStats;
         private readonly ReplicaHelper _replicaHelper;
-        private PerfTuneSettings _perfTunedSettings = PerfTuneSettings.Default;
+        private PerfTuneSettings _perfTunedSettings;
         private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new ConcurrentQueue<BufferedEvent>();
         private readonly Timer _processor;
 
         public ReplicaService(IConnectionBuilder originBuilder, IConnectionBuilder destinationBuilder,
-            IPositionRepository positionRepository, IFilterService filterService, int synchronisationInterval, bool handleConflicts)
+            IPositionRepository positionRepository, IFilterService filterService, ReplicaSettings settings)
         {
             Ensure.NotNull(originBuilder, nameof(originBuilder));
             Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
@@ -44,14 +44,15 @@ namespace Est.CrossClusterReplication
             _connectionBuilderForDestination = destinationBuilder;
             _positionRepository = positionRepository;
             _filterService = filterService;
-            _handleConflicts = handleConflicts;
+            _handleConflicts = settings.HandleConflicts;
 
-            _timerForStats = new Timer(1000);
+            _timerForStats = new Timer(settings.StatsInterval);
             _timerForStats.Elapsed += _timerForStats_Elapsed;
 
-            _processor = new Timer(synchronisationInterval);
+            _processor = new Timer(settings.SynchronisationInterval);
             _processor.Elapsed += Processor_Elapsed;
-
+            _perfTunedSettings =
+                new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
             _replicaHelper = new ReplicaHelper();
         }
 

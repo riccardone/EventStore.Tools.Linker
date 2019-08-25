@@ -15,7 +15,8 @@ namespace Est.CrossClusterReplication
             ReadBatchSize = readBatchSize;
         }
 
-        public static PerfTuneSettings Default => new PerfTuneSettings(10, 500, 5);
+        public static PerfTuneSettings Default => new PerfTuneSettings(ReplicaSettings.Default().MaxBufferSize,
+            ReplicaSettings.Default().MaxLiveQueue, ReplicaSettings.Default().ReadBatchSize);
 
         public override string ToString()
         {
