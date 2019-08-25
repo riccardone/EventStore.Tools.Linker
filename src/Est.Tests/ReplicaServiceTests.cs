@@ -18,7 +18,7 @@ namespace Est.Tests
             destinationBuilder.Setup(a => a.Build()).Returns(connection.Object);
             var positionRepo = new Mock<IPositionRepository>();
             var sut = new ReplicaService(originBuilder.Object, destinationBuilder.Object, positionRepo.Object, null,
-                1000, false);
+                ReplicaSettings.Default());
 
             // Act
             var result = sut.Start().Result;
