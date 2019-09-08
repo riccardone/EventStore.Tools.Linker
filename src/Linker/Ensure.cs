@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
     public static class Ensure
     {

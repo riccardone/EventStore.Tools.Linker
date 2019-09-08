@@ -5,9 +5,9 @@ using System.Text;
 using EventStore.ClientAPI;
 using Newtonsoft.Json;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
-    public class ReplicaHelper
+    public class LinkerHelper
     {
         public PerfTuneSettings OptimizeSettings(long lastExecutionTime, PerfTuneSettings currentPerfTuneSettings, int maxBufferSizeLimit = 1500, double differentialLimit = 1.10, int geoReplicaClock = 1000)
         {

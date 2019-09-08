@@ -1,6 +1,6 @@
-﻿namespace Est.CrossClusterReplication
+﻿namespace Linker
 {
-    public static class ReplicaSettingsDefaults
+    public static class SettingsDefaults
     {
         public const int SynchronisationInterval = 1000;
         public const bool HandleConflicts = false;

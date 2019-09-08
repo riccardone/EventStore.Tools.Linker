@@ -1,4 +1,4 @@
-﻿namespace Est.CrossClusterReplication
+﻿namespace Linker
 {
     public enum FilterOperation
     {
@@ -12,20 +12,20 @@
         EventType
     }
 
-    public class ReplicaFilter
+    public class Filter
     {
         public FilterType FilterType { get; set; }
         public string Value { get; set; }
         public FilterOperation FilterOperation { get; set; }
 
-        public ReplicaFilter(FilterType filterType, string value, FilterOperation filterOperation)
+        public Filter(FilterType filterType, string value, FilterOperation filterOperation)
         {
             FilterType = filterType;
             Value = value;
             FilterOperation = filterOperation;
         }
 
-        public ReplicaFilter()
+        public Filter()
         {
             
         }

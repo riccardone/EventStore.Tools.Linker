@@ -1,15 +1,15 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
     public class FilterService : IFilterService
     {
-        private readonly IDictionary<FilterOperation, List<ReplicaFilter>> _filters;
+        private readonly IDictionary<FilterOperation, List<Filter>> _filters;
 
-        public FilterService(IEnumerable<ReplicaFilter> filters)
+        public FilterService(IEnumerable<Filter> filters)
         {
-            _filters = new Dictionary<FilterOperation, List<ReplicaFilter>>();
+            _filters = new Dictionary<FilterOperation, List<Filter>>();
             if (filters == null)
                 return;
             foreach (var replicaFilter in filters)
@@ -20,7 +20,7 @@ namespace Est.CrossClusterReplication
                 }
                 else
                 {
-                    _filters.Add(replicaFilter.FilterOperation, new List<ReplicaFilter> { replicaFilter });
+                    _filters.Add(replicaFilter.FilterOperation, new List<Filter> { replicaFilter });
                 }
             }
         }
@@ -37,7 +37,7 @@ namespace Est.CrossClusterReplication
             return false;
         }
 
-        private static bool IsIncludedByFilters(string eventType, string eventStreamId, List<ReplicaFilter> filters)
+        private static bool IsIncludedByFilters(string eventType, string eventStreamId, List<Filter> filters)
         {
             if (filters == null || !filters.Any())
                 return true;
@@ -61,7 +61,7 @@ namespace Est.CrossClusterReplication
             return includedByStreamFilters && includedByEventTypeFilters;
         }
 
-        private static bool IsExcludedByFilters(string eventType, string eventStreamId, List<ReplicaFilter> filters)
+        private static bool IsExcludedByFilters(string eventType, string eventStreamId, List<Filter> filters)
         {
             if (filters == null || !filters.Any())
                 return false;
@@ -84,7 +84,7 @@ namespace Est.CrossClusterReplication
             return excludedByStreamFilters || excludedByEventTypeFilters;
         }
 
-        private static bool IsExcludedByEventType(string eventType, ReplicaFilter replicaFilter)
+        private static bool IsExcludedByEventType(string eventType, Filter replicaFilter)
         {
             if (replicaFilter.Value.EndsWith("*"))
             {
@@ -104,7 +104,7 @@ namespace Est.CrossClusterReplication
             return false;
         }
 
-        private static bool IsIncludedByEventType(string eventType, ReplicaFilter replicaFilter)
+        private static bool IsIncludedByEventType(string eventType, Filter replicaFilter)
         {
             if (replicaFilter.Value.EndsWith("*"))
             {
@@ -124,7 +124,7 @@ namespace Est.CrossClusterReplication
             return false;
         }
 
-        private static bool IsExcludedByStream(string eventStreamId, ReplicaFilter replicaFilter)
+        private static bool IsExcludedByStream(string eventStreamId, Filter replicaFilter)
         {
             if (replicaFilter.Value.EndsWith("*"))
             {
@@ -144,7 +144,7 @@ namespace Est.CrossClusterReplication
             return false;
         }
 
-        private static bool IsIncludedByStream(string eventStreamId, ReplicaFilter replicaFilter)
+        private static bool IsIncludedByStream(string eventStreamId, Filter replicaFilter)
         {
             if (replicaFilter.Value.EndsWith("*"))
             {

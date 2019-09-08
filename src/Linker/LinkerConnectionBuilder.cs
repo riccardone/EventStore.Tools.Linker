@@ -1,9 +1,9 @@
 ﻿using System;
 using EventStore.ClientAPI;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
-    public class ConnectionBuilder : IConnectionBuilder
+    public class LinkerConnectionBuilder : ILinkerConnectionBuilder
     {
         public Uri ConnectionString { get; }
         public ConnectionSettings ConnectionSettings { get; }
@@ -14,7 +14,7 @@ namespace Est.CrossClusterReplication
             return EventStoreConnection.Create(ConnectionSettings, ConnectionString, ConnectionName);
         }
 
-        public ConnectionBuilder(Uri connectionString, ConnectionSettings connectionSettings, string connectionName)
+        public LinkerConnectionBuilder(Uri connectionString, ConnectionSettings connectionSettings, string connectionName)
         {
             ConnectionString = connectionString;
             ConnectionSettings = connectionSettings;
