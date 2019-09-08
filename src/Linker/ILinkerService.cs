@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
-    public interface IReplicaService
+    public interface ILinkerService
     {
         Task<bool> Start();
         Task<bool> Stop();

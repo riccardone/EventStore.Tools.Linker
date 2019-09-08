@@ -1,6 +1,6 @@
-﻿namespace Est.CrossClusterReplication
+﻿namespace Linker
 {
-    public class ReplicaSettings
+    public class Settings
     {
         public int SynchronisationInterval { get; }
         public int StatsInterval { get; }
@@ -8,14 +8,14 @@
         public int MaxLiveQueue { get; }
         public int ReadBatchSize { get; }
         public bool HandleConflicts { get; }
-        public static ReplicaSettings Default()
+        public static Settings Default()
         {
-            return new ReplicaSettings(ReplicaSettingsDefaults.SynchronisationInterval,
-                ReplicaSettingsDefaults.HandleConflicts, ReplicaSettingsDefaults.StatsInterval,
-                ReplicaSettingsDefaults.MaxBufferSize, ReplicaSettingsDefaults.MaxLiveQueue,
-                ReplicaSettingsDefaults.ReadBatchSize);
+            return new Settings(SettingsDefaults.SynchronisationInterval,
+                SettingsDefaults.HandleConflicts, SettingsDefaults.StatsInterval,
+                SettingsDefaults.MaxBufferSize, SettingsDefaults.MaxLiveQueue,
+                SettingsDefaults.ReadBatchSize);
         }
-        public ReplicaSettings(int synchronisationInterval, bool handleConflicts, int statsInterval, int maxBufferSize,
+        public Settings(int synchronisationInterval, bool handleConflicts, int statsInterval, int maxBufferSize,
             int maxLiveQueue, int readBatchSize)
         {
             SynchronisationInterval = synchronisationInterval;

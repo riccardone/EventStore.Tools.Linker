@@ -1,4 +1,4 @@
-﻿namespace Est.CrossClusterReplication
+﻿namespace Linker
 {
     public interface IFilterService
     {

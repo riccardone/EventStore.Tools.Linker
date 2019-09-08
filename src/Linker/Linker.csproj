@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageProjectUrl>https://github.com/riccardone/EventStore.Tools.Linker</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/riccardone/EventStore.Tools.Linker</RepositoryUrl>
+    <RepositoryType>Github</RepositoryType>
+    <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
+    <Description>Replicating user data between EventStore clusters or single instances</Description>
+    <PackageReleaseNotes>start</PackageReleaseNotes>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="eventstore.client" Version="5.0.2" />
+    <PackageReference Include="EventStore.Tools.PositionRepository" Version="1.0.0" />
+    <PackageReference Include="microsoft.csharp" Version="4.5.0" />
+    <PackageReference Include="nlog" Version="4.6.7" />
+  </ItemGroup>
+
+</Project>

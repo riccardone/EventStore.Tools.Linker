@@ -6,7 +6,7 @@ This is a .Net Standard library for replicating user data between EventStore clu
   
 You can reference this project using Nuget
 ```
-PM> Install-Package EventStoreReplica  
+PM> Install-Package Linker  
 ```
 
 # Example use
@@ -23,10 +23,11 @@ class Program
         static void Main(string[] args)
         {
             var connSettings = ConnectionSettings.Create().SetDefaultUserCredentials(new UserCredentials("admin", "changeit"));
-            var origin = new ConnectionBuilder(new Uri("tcp://localhost:1112"), connSettings, "origin-01");
-            var destination = new ConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
-            var positionRepo = new PositionRepository($"PositionStream-{destination.ConnectionName}", "PositionUpdated", destination);
-            var service = new ReplicaService(origin, destination, positionRepo, null, 1000, false);
+            var origin = new LinkerConnectionBuilder(new Uri("tcp://localhost:1112"), connSettings, "origin-01");
+            var destination = new LinkerConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
+            var position = new ConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
+            var positionRepo = new PositionRepository($"PositionStream-{destination.ConnectionName}", "PositionUpdated", position);
+            var service = new LinkerService(origin, destination, positionRepo, null, Settings.Default());
             service.Start().Wait();
             Log.Info("Replica Service started");            
             Log.Info("Press enter to exit the program");
@@ -41,34 +42,34 @@ To use the ReplicaService you pass the origin and the destination of the data re
 You can set a inclusion filter to specify which stream or streams are to be replicated. This will automatically exclude anything else. You can use the wildcard * in the stream string so that you can include any stream that start with 'domain-*' for example.  
 Example to create an inclusive stream filter  
 ```c#
-var filter = new ReplicaFilter(FilterType.Stream, "domain-*", FilterOperation.Include);
+var filter = new Filter(FilterType.Stream, "domain-*", FilterOperation.Include);
 ```
 ## Exclude streams filters 
 You can set a filter to exclude one or more streams that are not to be replicated. This will automatically include anything else. You can use the wildcard * in the stream string so that you can exclude any stream that start with 'rawdata-*' for example.  
 Example to create a filter that exclude all streams starting with the word rawdata- 
 ```c#
-var filter = new ReplicaFilter(FilterType.Stream, "rawdata-*", FilterOperation.Exclude);
+var filter = new Filter(FilterType.Stream, "rawdata-*", FilterOperation.Exclude);
 ```
 ## Include EventType filters  
 You can set a inclusion filter to specify which Event Type's are to be replicated. This will automatically exclude any other event type. You can use the wildcard * in the event type string so that you can include any event type that for exampe starts with 'User*'.  
 Example to create an inclusive stream filter  
 ```c#
-var filter = new ReplicaFilter(FilterType.EventType, "User*", FilterOperation.Include);
+var filter = new Filter(FilterType.EventType, "User*", FilterOperation.Include);
 ```
 ## Exclude EventType filters 
 You can set a filter to exclude one or more EventType's that must not be replicated. This will automatically include any other event type. You can use the wildcard * in the event type string so that you can exclude any event type that for example start with the word Basket.  
 Example to create a filter that exclude all streams starting with the word Basket 
 ```c#
-var filter = new ReplicaFilter(FilterType.EventType, "Basket*", FilterOperation.Exclude);
+var filter = new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude);
 ```
 You can combine filters toghether. Following is an example of building the ReplicaService with an inclusion filter
 ```c#
-            var service = new ReplicaService(origin, destination, positionRepo,
-                new FilterService(new List<ReplicaFilter>
+            var service = new LinkerService(origin, destination, positionRepo,
+                new FilterService(new List<Filter>
                 {
-                    new ReplicaFilter(FilterType.EventType, "User*", FilterOperation.Include),
-                    new ReplicaFilter(FilterType.Stream, "domain-*", FilterOperation.Include),
-                    new ReplicaFilter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
+                    new Filter(FilterType.EventType, "User*", FilterOperation.Include),
+                    new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
+                    new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
                 }), 1000, false);
             service.Start().Wait();
 ```
