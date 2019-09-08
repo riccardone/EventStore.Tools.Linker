@@ -1,7 +1,7 @@
 ﻿using System;
 using EventStore.ClientAPI;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
     public class BufferedEvent : IComparable<BufferedEvent>
     {

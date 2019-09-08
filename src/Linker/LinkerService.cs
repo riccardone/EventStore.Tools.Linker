@@ -5,11 +5,12 @@ using System.Threading.Tasks;
 using System.Timers;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.Exceptions;
+using EventStore.PositionRepository;
 using NLog;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
-    public class ReplicaService : IReplicaService
+    public class LinkerService : ILinkerService
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         private readonly IPositionRepository _positionRepository;
@@ -18,8 +19,8 @@ namespace Est.CrossClusterReplication
         private Position _lastPosition;
         private EventStoreAllCatchUpSubscription _allCatchUpSubscription;
         public string Name { get; }
-        private readonly IConnectionBuilder _connectionBuilderForOrigin;
-        private readonly IConnectionBuilder _connectionBuilderForDestination;
+        private readonly ILinkerConnectionBuilder _connectionBuilderForOrigin;
+        private readonly ILinkerConnectionBuilder _connectionBuilderForDestination;
         private IEventStoreConnection _destinationConnection;
         private IEventStoreConnection _originConnection;
         private bool _started;
@@ -27,13 +28,13 @@ namespace Est.CrossClusterReplication
         private int _totalProcessedMessagesPerSecondsPrevious;
         private int _processedMessagesPerSeconds;
         private readonly Timer _timerForStats;
-        private readonly ReplicaHelper _replicaHelper;
+        private readonly LinkerHelper _replicaHelper;
         private PerfTuneSettings _perfTunedSettings;
         private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new ConcurrentQueue<BufferedEvent>();
         private readonly Timer _processor;
 
-        public ReplicaService(IConnectionBuilder originBuilder, IConnectionBuilder destinationBuilder,
-            IPositionRepository positionRepository, IFilterService filterService, ReplicaSettings settings)
+        public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
+            IPositionRepository positionRepository, IFilterService filterService, Settings settings)
         {
             Ensure.NotNull(originBuilder, nameof(originBuilder));
             Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
@@ -53,7 +54,7 @@ namespace Est.CrossClusterReplication
             _processor.Elapsed += Processor_Elapsed;
             _perfTunedSettings =
                 new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
-            _replicaHelper = new ReplicaHelper();
+            _replicaHelper = new LinkerHelper();
         }
 
         public async Task<bool> Start()

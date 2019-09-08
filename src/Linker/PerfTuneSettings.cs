@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
     public class PerfTuneSettings : ICloneable
     {
@@ -15,8 +15,8 @@ namespace Est.CrossClusterReplication
             ReadBatchSize = readBatchSize;
         }
 
-        public static PerfTuneSettings Default => new PerfTuneSettings(ReplicaSettings.Default().MaxBufferSize,
-            ReplicaSettings.Default().MaxLiveQueue, ReplicaSettings.Default().ReadBatchSize);
+        public static PerfTuneSettings Default => new PerfTuneSettings(Settings.Default().MaxBufferSize,
+            Settings.Default().MaxLiveQueue, Settings.Default().ReadBatchSize);
 
         public override string ToString()
         {

@@ -1,9 +1,9 @@
 ﻿using System;
 using EventStore.ClientAPI;
 
-namespace Est.CrossClusterReplication
+namespace Linker
 {
-    public interface IConnectionBuilder
+    public interface ILinkerConnectionBuilder
     {
         Uri ConnectionString { get; }
         ConnectionSettings ConnectionSettings { get; }
