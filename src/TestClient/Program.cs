@@ -4,7 +4,6 @@ using System.Text;
 using System.Threading;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
-using EventStore.PositionRepository;
 using Linker;
 using NLog;
 using NLog.Config;
@@ -26,9 +25,7 @@ namespace TestClient
             var connSettings = ConnectionSettings.Create().SetDefaultUserCredentials(new UserCredentials("admin", "changeit"));
             var origin = new LinkerConnectionBuilder(new Uri("tcp://localhost:1112"), connSettings, "origin-01");
             var destination = new LinkerConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
-            var position = new ConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
-            var positionRepo = new PositionRepository($"PositionStream-{destination.ConnectionName}", "PositionUpdated", position);
-            var service = new LinkerService(origin, destination, positionRepo, new FilterService(new List<Filter>
+            var service = new LinkerService(origin, destination, new FilterService(new List<Filter>
                 {
                     new Filter(FilterType.EventType, "User*", FilterOperation.Include),
                     new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
@@ -36,7 +33,7 @@ namespace TestClient
                 }), Settings.Default());
             service.Start().Wait();
             Log.Info("Replica Service started");
-            TestReplicaForSampleEvent(connSettings, destination, "test", "ReplicaTested");
+            TestReplicaForSampleEvent(connSettings, destination, "domain-test-01", "UserReplicaTested");
             Log.Info("Press enter to exit the program");
             Console.ReadLine();
         }
@@ -48,11 +45,13 @@ namespace TestClient
             Log.Info($"the id saved on the origin database is {guidOnOrigin}");
             Thread.Sleep(3000);
             var guidOnDestination = ReadLastEventId(stream, connBuilder);
-            Log.Info($"the last replicated id on the destination database is {guidOnDestination}");
             if (guidOnDestination.Equals(guidOnOrigin))
+            {
+                Log.Info($"the last replicated id on the destination database is {guidOnDestination}");
                 Log.Info("The test event has been replicated correctly!");
+            }
             else
-                Log.Warn("The test event has not been replicated correctly");
+                Log.Error("The test event has not been replicated correctly");
         }
 
         private static Guid AppendEvent(string body, string stream, string eventType, ILinkerConnectionBuilder senderConnectionBuilder)
