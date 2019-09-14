@@ -7,9 +7,9 @@
     <RepositoryType>Github</RepositoryType>
     <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
     <Description>Replicating user data between EventStore clusters or single instances</Description>
-    <PackageReleaseNotes>added constructor to build LinkerService with default positionrepository saving position on destination with default settings</PackageReleaseNotes>
+    <PackageReleaseNotes>removed nlog dependency and introduced ILogger abstraction for logging</PackageReleaseNotes>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Copyright>Riccardo Di Nuzzo</Copyright>
     <Authors>Riccardo Di Nuzzo</Authors>
   </PropertyGroup>
