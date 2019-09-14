@@ -30,7 +30,7 @@ namespace TestClient
                     new Filter(FilterType.EventType, "User*", FilterOperation.Include),
                     new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
                     new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
-                }), Settings.Default());
+                }), Settings.Default(), new NLogLogger());
             service.Start().Wait();
             Log.Info("Replica Service started");
             TestReplicaForSampleEvent(connSettings, destination, "domain-test-01", "UserReplicaTested");
