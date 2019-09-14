@@ -57,6 +57,12 @@ namespace Linker
             _replicaHelper = new LinkerHelper();
         }
 
+        public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
+            IFilterService filterService, Settings settings) : this(originBuilder,destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
+            "PositionUpdated",
+            new ConnectionBuilder(destinationBuilder.ConnectionString, destinationBuilder.ConnectionSettings,
+                $"position-{destinationBuilder.ConnectionName}")), filterService, settings) { }
+
         public async Task<bool> Start()
         {
             _destinationConnection?.Close();
