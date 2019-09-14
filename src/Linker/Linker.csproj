@@ -16,9 +16,8 @@
 
   <ItemGroup>
     <PackageReference Include="eventstore.client" Version="5.0.2" />
-    <PackageReference Include="EventStore.Tools.PositionRepository" Version="1.0.0" />
+    <PackageReference Include="EventStore.Tools.PositionRepository" Version="1.0.1" />
     <PackageReference Include="microsoft.csharp" Version="4.5.0" />
-    <PackageReference Include="nlog" Version="4.6.7" />
   </ItemGroup>
 
 </Project>

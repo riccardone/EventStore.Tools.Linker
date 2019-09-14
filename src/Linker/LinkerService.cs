@@ -6,13 +6,12 @@ using System.Timers;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.Exceptions;
 using EventStore.PositionRepository;
-using NLog;
 
 namespace Linker
 {
     public class LinkerService : ILinkerService
     {
-        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        private readonly ILogger _logger;
         private readonly IPositionRepository _positionRepository;
         private readonly IFilterService _filterService;
         private readonly bool _handleConflicts;
@@ -34,12 +33,13 @@ namespace Linker
         private readonly Timer _processor;
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-            IPositionRepository positionRepository, IFilterService filterService, Settings settings)
+            IPositionRepository positionRepository, IFilterService filterService, Settings settings, ILogger logger)
         {
             Ensure.NotNull(originBuilder, nameof(originBuilder));
             Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
             Ensure.NotNull(positionRepository, nameof(positionRepository));
 
+            _logger = logger;
             Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
             _connectionBuilderForOrigin = originBuilder;
             _connectionBuilderForDestination = destinationBuilder;
@@ -58,10 +58,15 @@ namespace Linker
         }
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
+            IPositionRepository positionRepository, IFilterService filterService, Settings settings) : this(
+            originBuilder, destinationBuilder, positionRepository, filterService, settings,
+            new SimpleConsoleLogger(nameof(LinkerService))) { }
+
+        public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
             IFilterService filterService, Settings settings) : this(originBuilder,destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
             "PositionUpdated",
             new ConnectionBuilder(destinationBuilder.ConnectionString, destinationBuilder.ConnectionSettings,
-                $"position-{destinationBuilder.ConnectionName}")), filterService, settings) { }
+                $"position-{destinationBuilder.ConnectionName}")), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService))) { }
 
         public async Task<bool> Start()
         {
@@ -83,7 +88,7 @@ namespace Linker
             _originConnection.Reconnecting += _originConnection_Reconnecting;
             await _originConnection.ConnectAsync();
 
-            Log.Info($"{Name} started");
+            _logger.Info($"{Name} started");
             return true;
         }
 
@@ -109,7 +114,7 @@ namespace Linker
             _timerForStats.Stop();
             _totalProcessedMessagesCurrent = 0;
             _started = false;
-            Log.Info($"{Name} stopped");
+            _logger.Info($"{Name} stopped");
             return Task.FromResult(true);
         }
 
@@ -127,19 +132,19 @@ namespace Linker
                 ProcessQueueAndWaitAll();
                 watch.Stop();
                 var elapsedMs = watch.ElapsedMilliseconds;
-                Log.Debug($"{Name} Replicated '{eventsToProcess}' events in {elapsedMs}ms");
+                _logger.Debug($"{Name} Replicated '{eventsToProcess}' events in {elapsedMs}ms");
                 _perfTunedSettings = _replicaHelper.OptimizeSettings(elapsedMs, _perfTunedSettings);
                 if (!_perfTunedSettings.Equals(oldPerfSettings))
                 {
-                    Log.Debug($"{Name} Old PerfSettings: {oldPerfSettings}");
-                    Log.Debug($"{Name} New PerfSettings: {_perfTunedSettings}");
+                    _logger.Debug($"{Name} Old PerfSettings: {oldPerfSettings}");
+                    _logger.Debug($"{Name} New PerfSettings: {_perfTunedSettings}");
                 }
                 Subscribe(_lastPosition);
                 _processor.Start();
             }
             catch (Exception exception)
             {
-                Log.Error(exception, "Error while Processor_Elapsed: {error}");
+                _logger.Error($"Error while Processor_Elapsed: {exception.GetBaseException().Message}");
                 Stop();
                 Start();
             }
@@ -154,22 +159,22 @@ namespace Linker
 
         private void _originConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
         {
-            Log.Debug($"{Name} Origin Reconnecting...");
+            _logger.Debug($"{Name} Origin Reconnecting...");
         }
 
         private void _destinationConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
         {
-            Log.Debug($"{Name} Destination Reconnecting...");
+            _logger.Debug($"{Name} Destination Reconnecting...");
         }
 
         private void OriginConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
         {
-            Log.Warn($"AuthenticationFailed to {_originConnection.ConnectionName}: {e.Reason}");
+            _logger.Warn($"AuthenticationFailed to {_originConnection.ConnectionName}: {e.Reason}");
         }
 
         private void OriginConnection_Connected(object sender, ClientConnectionEventArgs e)
         {
-            Log.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
+            _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
             _positionRepository.Start();
             _lastPosition = _positionRepository.Get();
             Subscribe(_lastPosition);
@@ -182,42 +187,42 @@ namespace Linker
 
         private void OriginConnection_Disconnected(object sender, ClientConnectionEventArgs e)
         {
-            Log.Warn($"{Name} disconnected from {e.RemoteEndPoint}");
+            _logger.Warn($"{Name} disconnected from {e.RemoteEndPoint}");
             Stop();
             Start();
         }
 
         private void OriginConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
         {
-            Log.Error(e.Exception.GetBaseException().Message);
+            _logger.Error(e.Exception.GetBaseException().Message);
             Stop();
             Start();
         }
 
         private void DestinationConnection_Connected(object sender, ClientConnectionEventArgs e)
         {
-            Log.Debug($"{_destinationConnection.ConnectionName} Connected to: {e.RemoteEndPoint}");
+            _logger.Debug($"{_destinationConnection.ConnectionName} Connected to: {e.RemoteEndPoint}");
         }
 
         private void DestinationConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
         {
-            Log.Warn($"AuthenticationFailed with {_destinationConnection.ConnectionName}: {e.Reason}");
+            _logger.Warn($"AuthenticationFailed with {_destinationConnection.ConnectionName}: {e.Reason}");
             if (!_started) return;
-            Log.Warn($"Restart {Name}...");
+            _logger.Warn($"Restart {Name}...");
             Stop();
             Start();
         }
 
         private void DestinationConnection_Disconnected(object sender, ClientConnectionEventArgs e)
         {
-            Log.Warn($"{_destinationConnection.ConnectionName} disconnected from '{e.RemoteEndPoint}'");
+            _logger.Warn($"{_destinationConnection.ConnectionName} disconnected from '{e.RemoteEndPoint}'");
             Stop();
             Start();
         }
 
         private void DestinationConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
         {
-            Log.Error($"Error with {_destinationConnection.ConnectionName}: {e.Exception.GetBaseException().Message}");
+            _logger.Error($"Error with {_destinationConnection.ConnectionName}: {e.Exception.GetBaseException().Message}");
         }
 
         public IDictionary<string, dynamic> GetStats()
@@ -237,7 +242,7 @@ namespace Linker
         {
             _allCatchUpSubscription = _originConnection.SubscribeToAllFrom(position,
                 BuildSubscriptionSettings(), EventAppeared, LiveProcessingStarted, SubscriptionDropped);
-            Log.Debug($"Subscribed from position: {position}");
+            _logger.Debug($"Subscribed from position: {position}");
         }
 
         private void SubscriptionDropped(EventStoreCatchUpSubscription eventStoreCatchUpSubscription, SubscriptionDropReason subscriptionDropReason, Exception arg3)
@@ -248,9 +253,9 @@ namespace Linker
                 return;
             if (arg3?.GetBaseException() is ObjectDisposedException)
                 return;
-            Log.Warn($"Cross Replica Resubscribing... (reason: {subscriptionDropReason})");
+            _logger.Warn($"Cross Replica Resubscribing... (reason: {subscriptionDropReason})");
             if (arg3 != null)
-                Log.Error($"exception: {arg3.GetBaseException().Message}");
+                _logger.Error($"exception: {arg3.GetBaseException().Message}");
             _lastPosition = _positionRepository.Get();
             Subscribe(_lastPosition);
         }
@@ -263,7 +268,7 @@ namespace Linker
 
         private void LiveProcessingStarted(EventStoreCatchUpSubscription eventStoreCatchUpSubscription)
         {
-            Log.Debug($"'{Name}' Started");
+            _logger.Debug($"'{Name}' Started");
         }
 
         protected Task EventAppeared(EventStoreCatchUpSubscription eventStoreCatchUpSubscription, ResolvedEvent resolvedEvent)
@@ -280,7 +285,7 @@ namespace Linker
             }
             catch (Exception e)
             {
-                Log.Error(e, $"Error during Cross Replica {e}");
+                _logger.Error($"Error during Cross Replica {e.GetBaseException().Message}");
             }
 
             return Task.CompletedTask;
@@ -339,7 +344,7 @@ namespace Linker
                                     (WrongExpectedVersionException)a.Exception.InnerException,
                                     _replicaHelper.DeserializeObject(ev1.EventData.Metadata)))
                                 {
-                                    Log.Warn($"Error while handling conflicts: {a.Exception.InnerException.Message}");
+                                    _logger.Warn($"Error while handling conflicts: {a.Exception.InnerException.Message}");
                                 }
                             }
                         }, TaskContinuationOptions.OnlyOnFaulted).ContinueWith(a =>
@@ -354,7 +359,8 @@ namespace Linker
             {
                 foreach (var aeInnerException in ae.InnerExceptions)
                 {
-                    Log.Error(aeInnerException, "Error while processing georeplica queue: {error}");
+                    _logger.Error(
+                        $"Error while processing georeplica queue: {aeInnerException.GetBaseException().Message}");
                 }
             }
         }
@@ -388,7 +394,7 @@ namespace Linker
             }
             catch (Exception e)
             {
-                Log.Error(e, "Error while TryHandleConflicts");
+                _logger.Error($"Error while TryHandleConflicts {e.GetBaseException().Message}");
                 return false;
             }
         }
