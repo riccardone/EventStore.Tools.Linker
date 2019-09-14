@@ -2,7 +2,7 @@
 
 namespace Linker
 {
-    public class SimpleConsoleLogger : ILogger
+    public class SimpleConsoleLogger : ILinkerLogger
     {
         private readonly string _moduleName;
 
@@ -27,11 +27,6 @@ namespace Linker
             Console.WriteLine($"{DateTime.Now:F}|{_moduleName}|{ex.GetBaseException().Message}");
         }
 
-        public void Warn(string message, string warnMessage)
-        {
-            Console.WriteLine($"{DateTime.Now:F}|{_moduleName}|{message}|{warnMessage}");
-        }
-
         public void Error(string message)
         {
             Console.WriteLine($"{DateTime.Now:F}|{_moduleName}|{message}");
@@ -41,11 +36,6 @@ namespace Linker
         {
             Console.WriteLine($"{DateTime.Now:F}|{_moduleName}|{message}");
             Console.WriteLine($"{DateTime.Now:F}|{_moduleName}|{ex.GetBaseException().Message}");
-        }
-
-        public void Error(string message, string errorMessage)
-        {
-            Console.WriteLine($"{DateTime.Now:F}|{_moduleName}|{message}|{errorMessage}");
         }
 
         public void Debug(string message)

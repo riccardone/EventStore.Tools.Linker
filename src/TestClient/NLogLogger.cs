@@ -1,10 +1,10 @@
 ﻿using System;
+using Linker;
 using NLog;
-using ILogger = Linker.ILogger;
 
 namespace TestClient
 {
-    public class NLogLogger : ILogger
+    public class NLogLogger : ILinkerLogger
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
 
