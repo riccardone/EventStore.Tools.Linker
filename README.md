@@ -1,7 +1,4 @@
-# eventstore-tools
-Toolset to add features to EventStore OSS  
-
-# EventStoreReplica a tool for cross cluster replication
+# Linker is a tool for EventStore cross cluster replication
 This is a .Net Standard library for replicating user data between EventStore clusters or single instances. It requires a reference to the latest EventStore.Client nuget available at the time this tool was implemented or changed. If you need to reference a different version of EventStore.Client, you can fork the repo or open an issue to get a different nuget version. 
   
 You can reference this project using Nuget
@@ -9,9 +6,9 @@ You can reference this project using Nuget
 PM> Install-Package Linker  
 ```
 
-# Example use
+# Simplest example usage
 I implemented this tool as a library/nuget for it to be hosted in any program that better fit your requirements and let you configure it as you wish. 
-Following is an example of it running in a .Net Core Console application and replicating data between two single EventStore instances running on the same machine but on different tcp ports (1112, 2112). 
+Following is an example of it running in a .Net Core Console application and replicating data between two single EventStore instances running on the same machine but on different tcp ports (1112, 2112) and http ports (1114, 2114). 
 ```c#
 class Program
     {
@@ -24,10 +21,8 @@ class Program
         {
             var connSettings = ConnectionSettings.Create().SetDefaultUserCredentials(new UserCredentials("admin", "changeit"));
             var origin = new LinkerConnectionBuilder(new Uri("tcp://localhost:1112"), connSettings, "origin-01");
-            var destination = new LinkerConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
-            var position = new ConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
-            var positionRepo = new PositionRepository($"PositionStream-{destination.ConnectionName}", "PositionUpdated", position);
-            var service = new LinkerService(origin, destination, positionRepo, null, Settings.Default());
+            var destination = new LinkerConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");            
+            var service = new LinkerService(origin, destination, null, Settings.Default());
             service.Start().Wait();
             Log.Info("Replica Service started");            
             Log.Info("Press enter to exit the program");
@@ -35,7 +30,7 @@ class Program
         }
     }
 ```
-To use the ReplicaService you pass the origin and the destination of the data replication. Eact ReplicationService is a link between Origin and Destination. It is possible run multiple ReplicationService's for more complex scenarios. The Position of the replica can be saved on both sides but it's better to save it on the destination as in the example. 
+To use the LinkerService you pass the origin and the destination of the data replication. Eact LinkerService is a link between Origin and Destination. It is possible run multiple LinkerService's for more complex scenarios. The Position of the replica can be saved on both sides but it's better to save it on the destination. If you want to control where to save the position you can build your PositionRepository and pass it to the LinkerService.
   
 # Use filters 
 ## Include streams filters
@@ -64,7 +59,7 @@ var filter = new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude
 ```
 You can combine filters toghether. Following is an example of building the ReplicaService with an inclusion filter
 ```c#
-            var service = new LinkerService(origin, destination, positionRepo,
+            var service = new LinkerService(origin, destination, 
                 new FilterService(new List<Filter>
                 {
                     new Filter(FilterType.EventType, "User*", FilterOperation.Include),
