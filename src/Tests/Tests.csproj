@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="eventstore.client" Version="5.0.2" />
-    <PackageReference Include="eventstore.tools.positionrepository" Version="1.0.0" />
+    <PackageReference Include="eventstore.tools.positionrepository" Version="1.0.1" />
     <PackageReference Include="moq" Version="4.13.0" />
     <PackageReference Include="nunit" Version="3.11.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="3.11.0" />
