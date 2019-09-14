@@ -11,7 +11,7 @@ namespace Linker
 {
     public class LinkerService : ILinkerService
     {
-        private readonly ILogger _logger;
+        private readonly ILinkerLogger _logger;
         private readonly IPositionRepository _positionRepository;
         private readonly IFilterService _filterService;
         private readonly bool _handleConflicts;
@@ -33,7 +33,7 @@ namespace Linker
         private readonly Timer _processor;
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-            IPositionRepository positionRepository, IFilterService filterService, Settings settings, ILogger logger)
+            IPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger)
         {
             Ensure.NotNull(originBuilder, nameof(originBuilder));
             Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
@@ -56,6 +56,14 @@ namespace Linker
                 new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
             _replicaHelper = new LinkerHelper();
         }
+
+        public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
+            IFilterService filterService, Settings settings, ILinkerLogger logger) : this(
+            originBuilder, destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
+                "PositionUpdated",
+                new ConnectionBuilder(destinationBuilder.ConnectionString, destinationBuilder.ConnectionSettings,
+                    $"position-{destinationBuilder.ConnectionName}")), filterService, settings, logger)
+        { }
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
             IPositionRepository positionRepository, IFilterService filterService, Settings settings) : this(

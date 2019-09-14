@@ -2,7 +2,7 @@
 
 namespace Linker
 {
-    public interface ILogger
+    public interface ILinkerLogger
     {
         void Info(string message);
         void Warn(string message);
