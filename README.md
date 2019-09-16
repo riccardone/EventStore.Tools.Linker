@@ -57,7 +57,9 @@ Example to create a filter that exclude all streams starting with the word Baske
 ```c#
 var filter = new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude);
 ```
-You can combine filters toghether. Following is an example of building the ReplicaService with an inclusion filter
+## Combine filters
+Use of filters is optional. If you don't set any filter then all the user data will be replicated from origin to destination. If you set for example an Exclude filter then you must set one or more Include to include for example all other streams or eventtypes or only a subset.  
+Following is an example of building the LinkerService with a couple of Include filters and one Exclude
 ```c#
             var service = new LinkerService(origin, destination, 
                 new FilterService(new List<Filter>
