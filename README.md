@@ -30,7 +30,8 @@ class Program
         }
     }
 ```
-To use the LinkerService you pass the origin and the destination of the data replication. Eact LinkerService is a link between Origin and Destination. It is possible run multiple LinkerService's for more complex scenarios. The Position of the replica can be saved on both sides but it's better to save it on the destination. If you want to control where to save the position you can build your PositionRepository and pass it to the LinkerService.
+To use the LinkerService you pass the origin and the destination of the data replication. Eact LinkerService is a link between Origin and Destination. It is possible run multiple LinkerService's for more complex scenarios. The Position of the replica can be saved on both sides but it's better to save it on the destination. If you want to control where to save the position you can build your PositionRepository and pass it to the LinkerService.  
+If you don't want to build your own application using the Linker nuget than you can use the [Linker Console App](https://github.com/riccardone/EventStore.Tools.LinkerConsoleApp). It's a simple configurable app that can cover most of the scenario's.
   
 # Use filters 
 ## Include streams filters
