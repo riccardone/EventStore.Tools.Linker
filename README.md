@@ -8,7 +8,7 @@ PM> Install-Package Linker
 
 # Simplest example usage
 I implemented this tool as a library/nuget for it to be hosted in any program that better fit your requirements and let you configure it as you wish. 
-Following is an example of it running in a .Net Core Console application and replicating data between two single EventStore instances running on the same machine but on different tcp ports (1112, 2112) and http ports (1114, 2114). 
+Following is an example of it running in a simple .Net Core Console application and replicating data between two single EventStore instances running on the same machine but on different tcp ports (1112, 2112) and http ports (1114, 2114). If you are looking for more, the [LinkerConsoleApp](https://github.com/riccardone/EventStore.Tools.LinkerConsoleApp) is a configurable App using Linker. 
 ```c#
 class Program
     {
@@ -34,6 +34,7 @@ To use the LinkerService you pass the origin and the destination of the data rep
 If you don't want to build your own application using the Linker nuget than you can use the [Linker Console App](https://github.com/riccardone/EventStore.Tools.LinkerConsoleApp). It's a simple configurable app that can cover most of the scenario's.
   
 # Use filters 
+Without filters, all the user data will be replicated from the Origin to the linked Destination. When you add an exclude filter you must also add at least an include filter to include what else can be replicated.
 ## Include streams filters
 You can set a inclusion filter to specify which stream or streams are to be replicated. This will automatically exclude anything else. You can use the wildcard * in the stream string so that you can include any stream that start with 'domain-*' for example.  
 Example to create an inclusive stream filter  
