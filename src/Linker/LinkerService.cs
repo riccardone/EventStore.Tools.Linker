@@ -60,9 +60,7 @@ namespace Linker
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
             IFilterService filterService, Settings settings, ILinkerLogger logger) : this(
             originBuilder, destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
-                "PositionUpdated",
-                new ConnectionBuilder(destinationBuilder.ConnectionString, destinationBuilder.ConnectionSettings,
-                    $"position-{destinationBuilder.ConnectionName}")), filterService, settings, logger)
+                "PositionUpdated", destinationBuilder.Build), filterService, settings, logger)
         { }
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
@@ -72,9 +70,7 @@ namespace Linker
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
             IFilterService filterService, Settings settings) : this(originBuilder,destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
-            "PositionUpdated",
-            new ConnectionBuilder(destinationBuilder.ConnectionString, destinationBuilder.ConnectionSettings,
-                $"position-{destinationBuilder.ConnectionName}")), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService))) { }
+            "PositionUpdated", destinationBuilder.Build), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService))) { }
 
         public async Task<bool> Start()
         {
