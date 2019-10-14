@@ -7,16 +7,18 @@ namespace Linker
         public int MaxBufferSize { get; }
         public int MaxLiveQueue { get; }
         public int ReadBatchSize { get; }
+        public bool ResolveLinkTos { get; }
 
-        public PerfTuneSettings(int maxBufferSize, int maxLiveQueue, int readBatchSize)
+        public PerfTuneSettings(int maxBufferSize, int maxLiveQueue, int readBatchSize, bool resolveLinkTos)
         {
             MaxBufferSize = maxBufferSize;
             MaxLiveQueue = maxLiveQueue;
             ReadBatchSize = readBatchSize;
+            ResolveLinkTos = resolveLinkTos;
         }
 
         public static PerfTuneSettings Default => new PerfTuneSettings(Settings.Default().MaxBufferSize,
-            Settings.Default().MaxLiveQueue, Settings.Default().ReadBatchSize);
+            Settings.Default().MaxLiveQueue, Settings.Default().ReadBatchSize, Settings.Default().ResolveLinkTos);
 
         public override string ToString()
         {
@@ -25,7 +27,7 @@ namespace Linker
 
         public object Clone()
         {
-            return new PerfTuneSettings(MaxBufferSize, MaxLiveQueue, ReadBatchSize);
+            return new PerfTuneSettings(MaxBufferSize, MaxLiveQueue, ReadBatchSize, ResolveLinkTos);
         }
 
         public override bool Equals(object obj)

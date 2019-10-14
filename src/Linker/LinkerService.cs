@@ -53,7 +53,7 @@ namespace Linker
             _processor = new Timer(settings.SynchronisationInterval);
             _processor.Elapsed += Processor_Elapsed;
             _perfTunedSettings =
-                new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
+                new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize, settings.ResolveLinkTos);
             _replicaHelper = new LinkerHelper();
         }
 
@@ -267,7 +267,7 @@ namespace Linker
         private CatchUpSubscriptionSettings BuildSubscriptionSettings()
         {
             return new CatchUpSubscriptionSettings(_perfTunedSettings.MaxLiveQueue, _perfTunedSettings.ReadBatchSize,
-                CatchUpSubscriptionSettings.Default.VerboseLogging, CatchUpSubscriptionSettings.Default.ResolveLinkTos);
+                CatchUpSubscriptionSettings.Default.VerboseLogging, _perfTunedSettings.ResolveLinkTos);
         }
 
         private void LiveProcessingStarted(EventStoreCatchUpSubscription eventStoreCatchUpSubscription)
