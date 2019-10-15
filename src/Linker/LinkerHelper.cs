@@ -47,7 +47,7 @@ namespace Linker
                 optimizedReadBatchSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.ReadBatchSize / differentialLimit,
                     MidpointRounding.AwayFromZero));
             
-            return new PerfTuneSettings(optimizedMaxBufferSize, optimizedMaxLiveQueue, optimizedReadBatchSize, currentPerfTuneSettings.ResolveLinkTos);
+            return new PerfTuneSettings(optimizedMaxBufferSize, optimizedMaxLiveQueue, optimizedReadBatchSize);
         }
 
         public bool IsValidForReplica(string eventType, string eventStreamId, Position? originalPosition, string positionEventType, IFilterService filterService)

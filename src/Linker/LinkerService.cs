@@ -31,6 +31,7 @@ namespace Linker
         private PerfTuneSettings _perfTunedSettings;
         private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new ConcurrentQueue<BufferedEvent>();
         private readonly Timer _processor;
+        private readonly bool _resolveLinkTos;
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
             IPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger)
@@ -46,6 +47,7 @@ namespace Linker
             _positionRepository = positionRepository;
             _filterService = filterService;
             _handleConflicts = settings.HandleConflicts;
+            _resolveLinkTos = settings.ResolveLinkTos;
 
             _timerForStats = new Timer(settings.StatsInterval);
             _timerForStats.Elapsed += _timerForStats_Elapsed;
@@ -53,7 +55,7 @@ namespace Linker
             _processor = new Timer(settings.SynchronisationInterval);
             _processor.Elapsed += Processor_Elapsed;
             _perfTunedSettings =
-                new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize, settings.ResolveLinkTos);
+                new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
             _replicaHelper = new LinkerHelper();
         }
 
@@ -267,7 +269,7 @@ namespace Linker
         private CatchUpSubscriptionSettings BuildSubscriptionSettings()
         {
             return new CatchUpSubscriptionSettings(_perfTunedSettings.MaxLiveQueue, _perfTunedSettings.ReadBatchSize,
-                CatchUpSubscriptionSettings.Default.VerboseLogging, _perfTunedSettings.ResolveLinkTos);
+                CatchUpSubscriptionSettings.Default.VerboseLogging, _resolveLinkTos);
         }
 
         private void LiveProcessingStarted(EventStoreCatchUpSubscription eventStoreCatchUpSubscription)
