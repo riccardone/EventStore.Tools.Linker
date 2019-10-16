@@ -7,9 +7,9 @@
     <RepositoryType>Github</RepositoryType>
     <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
     <Description>Replicating user data between EventStore clusters or single instances</Description>
-    <PackageReleaseNotes>refactor builderconnection</PackageReleaseNotes>
+    <PackageReleaseNotes>added ResolveLinkTos in configurable settings</PackageReleaseNotes>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.1.2</Version>
+    <Version>1.1.3</Version>
     <Copyright>Riccardo Di Nuzzo</Copyright>
     <Authors>Riccardo Di Nuzzo</Authors>
   </PropertyGroup>
