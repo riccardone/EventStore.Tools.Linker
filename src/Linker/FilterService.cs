@@ -7,6 +7,8 @@ namespace Linker
     {
         private readonly IDictionary<FilterOperation, List<Filter>> _filters;
 
+        public FilterService(params Filter[] filters) :this(filters.AsEnumerable()){}
+
         public FilterService(IEnumerable<Filter> filters)
         {
             _filters = new Dictionary<FilterOperation, List<Filter>>();
@@ -29,12 +31,11 @@ namespace Linker
         {
             if (!_filters.Any())
                 return true;
-            if (_filters.ContainsKey(FilterOperation.Exclude) &&
-                IsExcludedByFilters(eventType, eventStreamId, _filters[FilterOperation.Exclude]))
-                return false;
-            if (_filters.ContainsKey(FilterOperation.Include))
-                return IsIncludedByFilters(eventType, eventStreamId, _filters[FilterOperation.Include]);
-            return false;
+
+            var shouldBeExcluded = _filters.ContainsKey(FilterOperation.Exclude) && IsExcludedByFilters(eventType, eventStreamId, _filters[FilterOperation.Exclude]);
+            var shouldBeIncluded = !_filters.ContainsKey(FilterOperation.Include) || IsIncludedByFilters(eventType, eventStreamId, _filters[FilterOperation.Include]);
+
+            return !shouldBeExcluded && shouldBeIncluded;
         }
 
         private static bool IsIncludedByFilters(string eventType, string eventStreamId, List<Filter> filters)
@@ -42,23 +43,10 @@ namespace Linker
             if (filters == null || !filters.Any())
                 return true;
 
-            var includedByStreamFilters = true;
-            var includedByEventTypeFilters = true;
+            var shouldIncludeByStream = filters.Any(f => f.FilterType == FilterType.Stream && IsIncludedByStream(eventStreamId, f));
+            var shouldIncludeByEventType = filters.Any(f => f.FilterType == FilterType.EventType && IsIncludedByEventType(eventType, f));
 
-            foreach (var replicaFilter in filters)
-            {
-                switch (replicaFilter.FilterType)
-                {
-                    case FilterType.Stream:
-                        includedByStreamFilters = IsIncludedByStream(eventStreamId, replicaFilter);
-                        break;
-                    case FilterType.EventType:
-                        includedByEventTypeFilters = IsIncludedByEventType(eventType, replicaFilter);
-                        break;
-                }
-            }
-            
-            return includedByStreamFilters && includedByEventTypeFilters;
+            return shouldIncludeByEventType || shouldIncludeByStream;
         }
 
         private static bool IsExcludedByFilters(string eventType, string eventStreamId, List<Filter> filters)
@@ -66,22 +54,10 @@ namespace Linker
             if (filters == null || !filters.Any())
                 return false;
 
-            var excludedByStreamFilters = false;
-            var excludedByEventTypeFilters = false;
+            var shouldExcludeByStream = filters.Any(f => f.FilterType == FilterType.Stream && IsExcludedByStream(eventStreamId, f));
+            var shouldExcludeByEventType = filters.Any(f => f.FilterType == FilterType.EventType && IsExcludedByEventType(eventType, f));
 
-            foreach (var replicaFilter in filters)
-            {
-                switch (replicaFilter.FilterType)
-                {
-                    case FilterType.Stream:
-                        excludedByStreamFilters = IsExcludedByStream(eventStreamId, replicaFilter);
-                        break;
-                    case FilterType.EventType:
-                        excludedByEventTypeFilters = IsExcludedByEventType(eventType, replicaFilter);
-                        break;
-                }
-            }
-            return excludedByStreamFilters || excludedByEventTypeFilters;
+            return shouldExcludeByStream || shouldExcludeByEventType;
         }
 
         private static bool IsExcludedByEventType(string eventType, Filter replicaFilter)
