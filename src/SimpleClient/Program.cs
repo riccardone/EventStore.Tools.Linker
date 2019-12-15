@@ -9,7 +9,7 @@ using NLog;
 using NLog.Config;
 using NLog.Targets;
 
-namespace TestClient
+namespace SimpleClient
 {
     class Program
     {

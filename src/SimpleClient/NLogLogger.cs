@@ -2,7 +2,7 @@
 using Linker;
 using NLog;
 
-namespace TestClient
+namespace SimpleClient
 {
     public class NLogLogger : ILinkerLogger
     {
