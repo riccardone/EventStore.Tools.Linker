@@ -15,9 +15,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="eventstore.client" Version="5.0.2" />
+    <PackageReference Include="eventstore.client" Version="5.0.5" />
     <PackageReference Include="EventStore.Tools.PositionRepository" Version="1.0.2" />
-    <PackageReference Include="microsoft.csharp" Version="4.6.0" />
+    <PackageReference Include="microsoft.csharp" Version="4.7.0" />
   </ItemGroup>
 
 </Project>
