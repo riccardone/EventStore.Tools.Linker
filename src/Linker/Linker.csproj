@@ -7,15 +7,15 @@
     <RepositoryType>Github</RepositoryType>
     <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
     <Description>Replicating user data between EventStore clusters or single instances</Description>
-    <PackageReleaseNotes>refactoring filterservice; added unit tests</PackageReleaseNotes>
+    <PackageReleaseNotes>updated eventstore.client to v5.0.6</PackageReleaseNotes>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.1.4</Version>
+    <Version>1.1.5</Version>
     <Copyright>Riccardo Di Nuzzo</Copyright>
     <Authors>Riccardo Di Nuzzo</Authors>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="eventstore.client" Version="5.0.5" />
+    <PackageReference Include="eventstore.client" Version="5.0.6" />
     <PackageReference Include="EventStore.Tools.PositionRepository" Version="1.0.2" />
     <PackageReference Include="microsoft.csharp" Version="4.7.0" />
   </ItemGroup>
