@@ -1,7 +1,7 @@
 [![Build Status](https://dev.azure.com/riccardone/EventStore.Linker/_apis/build/status/riccardone.EventStore.Tools.Linker?branchName=master)](https://dev.azure.com/riccardone/EventStore.Linker/_build/latest?definitionId=7&branchName=master)
 
 # Linker: a tool for EventStore cross cluster replication
-This is a .Net Standard library for replicating user data between EventStore clusters or single instances. It requires a reference to the latest EventStore.Client nuget available at the time this tool was implemented or changed. If you need to reference a different version of EventStore.Client, you can fork the repo or open an issue to get a different nuget version.  
+This is a .Net Standard library for replicating user data between EventStore clusters or single instances. It requires a reference to the latest EventStore.Client nuget available at the time this tool was implemented or changed. If you need to reference a different version of EventStore.Client, you can fork the repo or open an issue to get a different nuget version. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/).  
   
 You can reference this project using Nuget
 ```
