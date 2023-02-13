@@ -2,13 +2,19 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using EventStore.ClientAPI;
-using Newtonsoft.Json;
+using Linker.Contracts;
+using Linker.Model;
 
 namespace Linker
 {
     public class LinkerHelper
     {
+        private readonly IJsonService _jsonService;
+
+        public LinkerHelper(IJsonService jsonService)
+        {
+            _jsonService = jsonService;
+        }
         public PerfTuneSettings OptimizeSettings(long lastExecutionTime, PerfTuneSettings currentPerfTuneSettings, int maxBufferSizeLimit = 1500, double differentialLimit = 1.10, int geoReplicaClock = 1000)
         {
             if (differentialLimit > 1.50)
@@ -29,10 +35,10 @@ namespace Linker
             if (currentPerfTuneSettings.MaxBufferSize <= maxBufferSizeLimit && lastExecutionTime < geoReplicaClock)
                 optimizedMaxBufferSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxBufferSize * differentialLimit,
                     MidpointRounding.AwayFromZero));
-            if (currentPerfTuneSettings.MaxLiveQueue <= CatchUpSubscriptionSettings.Default.MaxLiveQueueSize && lastExecutionTime < geoReplicaClock)
+            if (currentPerfTuneSettings.MaxLiveQueue <= LinkerCatchUpSubscriptionSettings.Default.MaxLiveQueueSize && lastExecutionTime < geoReplicaClock)
                 optimizedMaxLiveQueue = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxLiveQueue * differentialLimit,
                     MidpointRounding.AwayFromZero));
-            if (currentPerfTuneSettings.ReadBatchSize <= CatchUpSubscriptionSettings.Default.ReadBatchSize && lastExecutionTime < geoReplicaClock)
+            if (currentPerfTuneSettings.ReadBatchSize <= LinkerCatchUpSubscriptionSettings.Default.ReadBatchSize && lastExecutionTime < geoReplicaClock)
                 optimizedReadBatchSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.ReadBatchSize * differentialLimit,
                     MidpointRounding.AwayFromZero));
 
@@ -40,10 +46,10 @@ namespace Linker
             if (currentPerfTuneSettings.MaxBufferSize >= maxBufferSizeLimit && lastExecutionTime > geoReplicaClock)
                 optimizedMaxBufferSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxBufferSize / differentialLimit,
                     MidpointRounding.AwayFromZero));
-            if (currentPerfTuneSettings.MaxLiveQueue >= CatchUpSubscriptionSettings.Default.MaxLiveQueueSize && lastExecutionTime > geoReplicaClock)
+            if (currentPerfTuneSettings.MaxLiveQueue >= LinkerCatchUpSubscriptionSettings.Default.MaxLiveQueueSize && lastExecutionTime > geoReplicaClock)
                 optimizedMaxLiveQueue = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxLiveQueue / differentialLimit,
                     MidpointRounding.AwayFromZero));
-            if (currentPerfTuneSettings.ReadBatchSize >= CatchUpSubscriptionSettings.Default.ReadBatchSize && lastExecutionTime > geoReplicaClock)
+            if (currentPerfTuneSettings.ReadBatchSize >= LinkerCatchUpSubscriptionSettings.Default.ReadBatchSize && lastExecutionTime > geoReplicaClock)
                 optimizedReadBatchSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.ReadBatchSize / differentialLimit,
                     MidpointRounding.AwayFromZero));
             
@@ -59,7 +65,7 @@ namespace Linker
             if (eventType.StartsWith("$") && !eventType.StartsWith("$$$"))
                 return false;
             if (eventType.Equals(positionEventType) ||
-                !originalPosition.HasValue)
+                originalPosition == null)
                 return false;
             if (filterService != null && !filterService.IsValid(eventType, eventStreamId))
                 return false;
@@ -116,13 +122,15 @@ namespace Linker
 
         public IDictionary<string, dynamic> DeserializeObject(byte[] obj)
         {
-            return JsonConvert.DeserializeObject<Dictionary<string, dynamic>>(
-                Encoding.UTF8.GetString(obj));
+            //return JsonConvert.DeserializeObject<Dictionary<string, dynamic>>(
+            //    Encoding.UTF8.GetString(obj));
+            return _jsonService.Deserialise<Dictionary<string, dynamic>>(Encoding.UTF8.GetString(obj));
         }
 
         public byte[] SerializeObject(object obj)
         {
-            var jsonObj = JsonConvert.SerializeObject(obj);
+            //var jsonObj = JsonConvert.SerializeObject(obj);
+            var jsonObj = _jsonService.Serialise(obj);
             var data = Encoding.UTF8.GetBytes(jsonObj);
             return data;
         }

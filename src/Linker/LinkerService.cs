@@ -3,25 +3,24 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Timers;
-using EventStore.ClientAPI;
-using EventStore.ClientAPI.Exceptions;
-using EventStore.PositionRepository;
+using Linker.Contracts;
+using Linker.Model;
 
 namespace Linker
 {
     public class LinkerService : ILinkerService
     {
         private readonly ILinkerLogger _logger;
-        private readonly IPositionRepository _positionRepository;
+        private readonly ILinkerPositionRepository _positionRepository;
         private readonly IFilterService _filterService;
         private readonly bool _handleConflicts;
         private Position _lastPosition;
-        private EventStoreAllCatchUpSubscription _allCatchUpSubscription;
+        private ILinkerAllCatchUpSubscription _allCatchUpSubscription;
         public string Name { get; }
         private readonly ILinkerConnectionBuilder _connectionBuilderForOrigin;
         private readonly ILinkerConnectionBuilder _connectionBuilderForDestination;
-        private IEventStoreConnection _destinationConnection;
-        private IEventStoreConnection _originConnection;
+        private ILinkerConnection _destinationConnection;
+        private ILinkerConnection _originConnection;
         private bool _started;
         private int _totalProcessedMessagesCurrent;
         private int _totalProcessedMessagesPerSecondsPrevious;
@@ -34,7 +33,7 @@ namespace Linker
         private readonly bool _resolveLinkTos;
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-            IPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger)
+            ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger)
         {
             Ensure.NotNull(originBuilder, nameof(originBuilder));
             Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
@@ -56,43 +55,44 @@ namespace Linker
             _processor.Elapsed += Processor_Elapsed;
             _perfTunedSettings =
                 new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
-            _replicaHelper = new LinkerHelper();
+            _replicaHelper = new LinkerHelper(null); // TODO
         }
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
             IFilterService filterService, Settings settings, ILinkerLogger logger) : this(
-            originBuilder, destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
-                "PositionUpdated", destinationBuilder.Build), filterService, settings, logger)
+            originBuilder, destinationBuilder, new PositionRepositoryV5($"PositionStream-{destinationBuilder.ConnectionName}",
+                "PositionUpdated", destinationBuilder.Build()), filterService, settings, logger)
         { }
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-            IPositionRepository positionRepository, IFilterService filterService, Settings settings) : this(
+            ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings) : this(
             originBuilder, destinationBuilder, positionRepository, filterService, settings,
             new SimpleConsoleLogger(nameof(LinkerService))) { }
 
         public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-            IFilterService filterService, Settings settings) : this(originBuilder,destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
-            "PositionUpdated", destinationBuilder.Build), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService))) { }
+            IFilterService filterService, Settings settings) : this(originBuilder,destinationBuilder, new PositionRepositoryV5($"PositionStream-{destinationBuilder.ConnectionName}",
+            "PositionUpdated", destinationBuilder.Build()), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService))) { }
 
         public async Task<bool> Start()
         {
-            _destinationConnection?.Close();
-            _destinationConnection = _connectionBuilderForDestination.Build();
-            _destinationConnection.ErrorOccurred += DestinationConnection_ErrorOccurred;
-            _destinationConnection.Disconnected += DestinationConnection_Disconnected;
-            _destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
-            _destinationConnection.Connected += DestinationConnection_Connected;
-            _destinationConnection.Reconnecting += _destinationConnection_Reconnecting;
-            await _destinationConnection.ConnectAsync();
+            // TODO
+            //_destinationConnection?.Close();
+            //_destinationConnection = _connectionBuilderForDestination.Build();
+            //_destinationConnection.ErrorOccurred += DestinationConnection_ErrorOccurred;
+            //_destinationConnection.Disconnected += DestinationConnection_Disconnected;
+            //_destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
+            //_destinationConnection.Connected += DestinationConnection_Connected;
+            //_destinationConnection.Reconnecting += _destinationConnection_Reconnecting;
+            //await _destinationConnection.ConnectAsync();
 
-            _originConnection?.Close();
-            _originConnection = _connectionBuilderForOrigin.Build();
-            _originConnection.ErrorOccurred += OriginConnection_ErrorOccurred;
-            _originConnection.Disconnected += OriginConnection_Disconnected;
-            _originConnection.AuthenticationFailed += OriginConnection_AuthenticationFailed;
-            _originConnection.Connected += OriginConnection_Connected;
-            _originConnection.Reconnecting += _originConnection_Reconnecting;
-            await _originConnection.ConnectAsync();
+            //_originConnection?.Close();
+            //_originConnection = _connectionBuilderForOrigin.Build();
+            //_originConnection.ErrorOccurred += OriginConnection_ErrorOccurred;
+            //_originConnection.Disconnected += OriginConnection_Disconnected;
+            //_originConnection.AuthenticationFailed += OriginConnection_AuthenticationFailed;
+            //_originConnection.Connected += OriginConnection_Connected;
+            //_originConnection.Reconnecting += _originConnection_Reconnecting;
+            //await _originConnection.ConnectAsync();
 
             _logger.Info($"{Name} started");
             return true;
@@ -100,23 +100,24 @@ namespace Linker
 
         public Task<bool> Stop()
         {
-            _destinationConnection.ErrorOccurred -= DestinationConnection_ErrorOccurred;
-            _destinationConnection.Disconnected -= DestinationConnection_Disconnected;
-            _destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
-            _destinationConnection.Connected -= DestinationConnection_Connected;
-            _destinationConnection.Reconnecting -= _destinationConnection_Reconnecting;
+            // TODO
+            //_destinationConnection.ErrorOccurred -= DestinationConnection_ErrorOccurred;
+            //_destinationConnection.Disconnected -= DestinationConnection_Disconnected;
+            //_destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
+            //_destinationConnection.Connected -= DestinationConnection_Connected;
+            //_destinationConnection.Reconnecting -= _destinationConnection_Reconnecting;
 
-            _originConnection.ErrorOccurred -= OriginConnection_ErrorOccurred;
-            _originConnection.Disconnected -= OriginConnection_Disconnected;
-            _originConnection.AuthenticationFailed -= OriginConnection_AuthenticationFailed;
-            _originConnection.Connected -= OriginConnection_Connected;
-            _originConnection.Reconnecting -= _originConnection_Reconnecting;
+            //_originConnection.ErrorOccurred -= OriginConnection_ErrorOccurred;
+            //_originConnection.Disconnected -= OriginConnection_Disconnected;
+            //_originConnection.AuthenticationFailed -= OriginConnection_AuthenticationFailed;
+            //_originConnection.Connected -= OriginConnection_Connected;
+            //_originConnection.Reconnecting -= _originConnection_Reconnecting;
 
             _processor.Stop();
-            _allCatchUpSubscription?.Stop();
-            _destinationConnection?.Close();
-            _originConnection?.Close();
-            _positionRepository.Stop();
+            //_allCatchUpSubscription?.Stop();
+            //_destinationConnection?.Close();
+            //_originConnection?.Close();
+            //_positionRepository.Stop();
             _timerForStats.Stop();
             _totalProcessedMessagesCurrent = 0;
             _started = false;
@@ -131,7 +132,8 @@ namespace Linker
             try
             {
                 _processor.Stop();
-                _allCatchUpSubscription.Stop();
+                // TODO
+                //_allCatchUpSubscription.Stop();
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 var eventsToProcess = _internalBuffer.Count;
                 var oldPerfSettings = _perfTunedSettings.Clone() as PerfTuneSettings;
@@ -163,73 +165,73 @@ namespace Linker
             _totalProcessedMessagesPerSecondsPrevious = current;
         }
 
-        private void _originConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
-        {
-            _logger.Debug($"{Name} Origin Reconnecting...");
-        }
+        //private void _originConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
+        //{
+        //    _logger.Debug($"{Name} Origin Reconnecting...");
+        //}
 
-        private void _destinationConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
-        {
-            _logger.Debug($"{Name} Destination Reconnecting...");
-        }
+        //private void _destinationConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
+        //{
+        //    _logger.Debug($"{Name} Destination Reconnecting...");
+        //}
 
-        private void OriginConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
-        {
-            _logger.Warn($"AuthenticationFailed to {_originConnection.ConnectionName}: {e.Reason}");
-        }
+        //private void OriginConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
+        //{
+        //    _logger.Warn($"AuthenticationFailed to {_originConnection.ConnectionName}: {e.Reason}");
+        //}
 
-        private void OriginConnection_Connected(object sender, ClientConnectionEventArgs e)
-        {
-            _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
-            _positionRepository.Start();
-            _lastPosition = _positionRepository.Get();
-            Subscribe(_lastPosition);
-            _processor.Enabled = true;
-            _processor.Start();
-            _timerForStats.Enabled = true;
-            _timerForStats.Start();
-            _started = true;
-        }
+        //private void OriginConnection_Connected(object sender, ClientConnectionEventArgs e)
+        //{
+        //    _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
+        //    _positionRepository.Start();
+        //    _lastPosition = _positionRepository.Get();
+        //    Subscribe(_lastPosition);
+        //    _processor.Enabled = true;
+        //    _processor.Start();
+        //    _timerForStats.Enabled = true;
+        //    _timerForStats.Start();
+        //    _started = true;
+        //}
 
-        private void OriginConnection_Disconnected(object sender, ClientConnectionEventArgs e)
-        {
-            _logger.Warn($"{Name} disconnected from {e.RemoteEndPoint}");
-            Stop();
-            Start();
-        }
+        //private void OriginConnection_Disconnected(object sender, ClientConnectionEventArgs e)
+        //{
+        //    _logger.Warn($"{Name} disconnected from {e.RemoteEndPoint}");
+        //    Stop();
+        //    Start();
+        //}
 
-        private void OriginConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
-        {
-            _logger.Error(e.Exception.GetBaseException().Message);
-            Stop();
-            Start();
-        }
+        //private void OriginConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
+        //{
+        //    _logger.Error(e.Exception.GetBaseException().Message);
+        //    Stop();
+        //    Start();
+        //}
 
-        private void DestinationConnection_Connected(object sender, ClientConnectionEventArgs e)
-        {
-            _logger.Debug($"{_destinationConnection.ConnectionName} Connected to: {e.RemoteEndPoint}");
-        }
+        //private void DestinationConnection_Connected(object sender, ClientConnectionEventArgs e)
+        //{
+        //    _logger.Debug($"{_destinationConnection.ConnectionName} Connected to: {e.RemoteEndPoint}");
+        //}
 
-        private void DestinationConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
-        {
-            _logger.Warn($"AuthenticationFailed with {_destinationConnection.ConnectionName}: {e.Reason}");
-            if (!_started) return;
-            _logger.Warn($"Restart {Name}...");
-            Stop();
-            Start();
-        }
+        //private void DestinationConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
+        //{
+        //    _logger.Warn($"AuthenticationFailed with {_destinationConnection.ConnectionName}: {e.Reason}");
+        //    if (!_started) return;
+        //    _logger.Warn($"Restart {Name}...");
+        //    Stop();
+        //    Start();
+        //}
 
-        private void DestinationConnection_Disconnected(object sender, ClientConnectionEventArgs e)
-        {
-            _logger.Warn($"{_destinationConnection.ConnectionName} disconnected from '{e.RemoteEndPoint}'");
-            Stop();
-            Start();
-        }
+        //private void DestinationConnection_Disconnected(object sender, ClientConnectionEventArgs e)
+        //{
+        //    _logger.Warn($"{_destinationConnection.ConnectionName} disconnected from '{e.RemoteEndPoint}'");
+        //    Stop();
+        //    Start();
+        //}
 
-        private void DestinationConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
-        {
-            _logger.Error($"Error with {_destinationConnection.ConnectionName}: {e.Exception.GetBaseException().Message}");
-        }
+        //private void DestinationConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
+        //{
+        //    _logger.Error($"Error with {_destinationConnection.ConnectionName}: {e.Exception.GetBaseException().Message}");
+        //}
 
         public IDictionary<string, dynamic> GetStats()
         {
@@ -246,42 +248,45 @@ namespace Linker
 
         private void Subscribe(Position position)
         {
-            _allCatchUpSubscription = _originConnection.SubscribeToAllFrom(position,
-                BuildSubscriptionSettings(), EventAppeared, LiveProcessingStarted, SubscriptionDropped);
+            // TODO
+            //_allCatchUpSubscription = _originConnection.SubscribeToAllFrom(position,
+            //    BuildSubscriptionSettings(), EventAppeared, LiveProcessingStarted, SubscriptionDropped);
             _logger.Debug($"Subscribed from position: {position}");
         }
 
-        private void SubscriptionDropped(EventStoreCatchUpSubscription eventStoreCatchUpSubscription, SubscriptionDropReason subscriptionDropReason, Exception arg3)
+        //private void SubscriptionDropped(EventStoreCatchUpSubscription eventStoreCatchUpSubscription, SubscriptionDropReason subscriptionDropReason, Exception arg3)
+        //{
+        //    if (!_started)
+        //        return;
+        //    if (subscriptionDropReason == SubscriptionDropReason.UserInitiated)
+        //        return;
+        //    if (arg3?.GetBaseException() is ObjectDisposedException)
+        //        return;
+        //    _logger.Warn($"Cross Replica Resubscribing... (reason: {subscriptionDropReason})");
+        //    if (arg3 != null)
+        //        _logger.Error($"exception: {arg3.GetBaseException().Message}");
+        //    _lastPosition = _positionRepository.Get();
+        //    Subscribe(_lastPosition);
+        //}
+
+        private LinkerCatchUpSubscriptionSettings BuildSubscriptionSettings()
         {
-            if (!_started)
-                return;
-            if (subscriptionDropReason == SubscriptionDropReason.UserInitiated)
-                return;
-            if (arg3?.GetBaseException() is ObjectDisposedException)
-                return;
-            _logger.Warn($"Cross Replica Resubscribing... (reason: {subscriptionDropReason})");
-            if (arg3 != null)
-                _logger.Error($"exception: {arg3.GetBaseException().Message}");
-            _lastPosition = _positionRepository.Get();
-            Subscribe(_lastPosition);
+            throw new NotImplementedException();
+            // TODO
+            //return new LinkerCatchUpSubscriptionSettings(_perfTunedSettings.MaxLiveQueue, _perfTunedSettings.ReadBatchSize,
+            //    LinkerCatchUpSubscriptionSettings.Default.VerboseLogging, _resolveLinkTos);
         }
 
-        private CatchUpSubscriptionSettings BuildSubscriptionSettings()
-        {
-            return new CatchUpSubscriptionSettings(_perfTunedSettings.MaxLiveQueue, _perfTunedSettings.ReadBatchSize,
-                CatchUpSubscriptionSettings.Default.VerboseLogging, _resolveLinkTos);
-        }
-
-        private void LiveProcessingStarted(EventStoreCatchUpSubscription eventStoreCatchUpSubscription)
+        private void LiveProcessingStarted(ILinkerAllCatchUpSubscription eventStoreCatchUpSubscription)
         {
             _logger.Debug($"'{Name}' Started");
         }
 
-        protected Task EventAppeared(EventStoreCatchUpSubscription eventStoreCatchUpSubscription, ResolvedEvent resolvedEvent)
+        public Task EventAppeared(ILinkerAllCatchUpSubscription eventStoreCatchUpSubscription, LinkerResolvedEvent resolvedEvent)
         {
             try
             {
-                if (resolvedEvent.Event == null || !resolvedEvent.OriginalPosition.HasValue)
+                if (resolvedEvent.Event == null || resolvedEvent.OriginalPosition == null)
                     return Task.CompletedTask;
                 return EventAppeared(new BufferedEvent(resolvedEvent.Event.EventStreamId,
                     resolvedEvent.Event.EventNumber, resolvedEvent.OriginalPosition.Value,
@@ -351,7 +356,7 @@ namespace Linker
                                     _replicaHelper.DeserializeObject(ev1.EventData.Metadata)))
                                 {
                                     _logger.Warn($"Error while handling conflicts: {a.Exception.InnerException.Message}");
-                                }
+                                } 
                             }
                         }, TaskContinuationOptions.OnlyOnFaulted).ContinueWith(a =>
                         {

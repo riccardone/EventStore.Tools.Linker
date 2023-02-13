@@ -1,5 +1,5 @@
 ﻿using System;
-using EventStore.ClientAPI;
+using Linker.Model;
 
 namespace Linker
 {

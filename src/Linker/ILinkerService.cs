@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using Linker.Contracts;
+using Linker.Model;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Linker
@@ -8,5 +10,7 @@ namespace Linker
         Task<bool> Start();
         Task<bool> Stop();
         IDictionary<string, dynamic> GetStats();
+        Task EventAppeared(ILinkerAllCatchUpSubscription eventStoreCatchUpSubscription,
+            LinkerResolvedEvent resolvedEvent);
     }
 }

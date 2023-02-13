@@ -1,5 +1,5 @@
 ﻿using System;
-using EventStore.ClientAPI;
+using Linker.Contracts;
 
 namespace Linker
 {
@@ -8,8 +8,8 @@ namespace Linker
         [Obsolete]
         Uri ConnectionString { get; }
         [Obsolete]
-        ConnectionSettings ConnectionSettings { get; }
+        LinkerConnectionSettings ConnectionSettings { get; }
         string ConnectionName { get; }
-        IEventStoreConnection Build();
+        ILinkerConnection Build();
     }
 }

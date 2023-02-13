@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="eventstore.client" Version="5.0.6" />
     <PackageReference Include="eventstore.tools.positionrepository" Version="1.0.2" />
     <PackageReference Include="moq" Version="4.13.1" />
     <PackageReference Include="nunit" Version="3.12.0" />
