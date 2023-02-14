@@ -2,12 +2,11 @@
 using Linker;
 using NLog;
 
-namespace SimpleClient
+namespace LinkerConsoleApp
 {
-    public class NLogLogger : ILinkerLogger
+    public class NLogger : ILinkerLogger
     {
-        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
-
+        private static Logger Log = LogManager.GetCurrentClassLogger();
         public void Info(string message)
         {
             Log.Info(message);
@@ -20,7 +19,7 @@ namespace SimpleClient
 
         public void Warn(string message, Exception ex)
         {
-            Log.Warn(message, ex.GetBaseException().Message);
+            Log.Warn($"{message}: {ex.GetBaseException().Message}");
         }
 
         public void Error(string message)
@@ -30,7 +29,7 @@ namespace SimpleClient
 
         public void Error(string message, Exception ex)
         {
-            Log.Error(message, ex.GetBaseException().Message);
+            Log.Error($"{message}: {ex.GetBaseException().Message}");
         }
 
         public void Debug(string message)

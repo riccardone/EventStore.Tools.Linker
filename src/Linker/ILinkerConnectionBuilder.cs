@@ -1,15 +1,11 @@
-﻿using System;
-using Linker.Contracts;
+﻿namespace Linker;
 
-namespace Linker
+public interface ILinkerConnectionBuilder
 {
-    public interface ILinkerConnectionBuilder
-    {
-        [Obsolete]
-        Uri ConnectionString { get; }
-        [Obsolete]
-        LinkerConnectionSettings ConnectionSettings { get; }
-        string ConnectionName { get; }
-        ILinkerConnection Build();
-    }
+    [Obsolete]
+    Uri ConnectionString { get; }
+    [Obsolete]
+    LinkerConnectionSettings ConnectionSettings { get; }
+    string ConnectionName { get; }
+    ILinkerConnection Build();
 }

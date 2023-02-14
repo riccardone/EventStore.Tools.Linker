@@ -1,7 +1,6 @@
-﻿namespace Linker
+﻿namespace Linker;
+
+public interface IFilterService
 {
-    public interface IFilterService
-    {
-        bool IsValid(string eventType, string eventStreamId);
-    }
+    bool IsValid(string eventType, string eventStreamId);
 }

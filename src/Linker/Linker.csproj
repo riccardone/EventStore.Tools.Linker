@@ -1,21 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
-    <PackageProjectUrl>https://github.com/riccardone/EventStore.Tools.Linker</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/riccardone/EventStore.Tools.Linker</RepositoryUrl>
-    <RepositoryType>Github</RepositoryType>
-    <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
-    <Description>Replicating user data between EventStore clusters or single instances</Description>
-    <PackageReleaseNotes>updated eventstore.client to v5.0.6</PackageReleaseNotes>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.1.5</Version>
-    <Copyright>Riccardo Di Nuzzo</Copyright>
-    <Authors>Riccardo Di Nuzzo</Authors>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="microsoft.csharp" Version="4.7.0" />
+    <PackageReference Include="eventstore.client" Version="5.0.12" />
+    <PackageReference Include="EventStore.Client.Grpc.Streams" Version="22.0.0" />
   </ItemGroup>
 
 </Project>
