@@ -1,7 +1,4 @@
-﻿using System.Collections.Generic;
-using Linker;
-
-namespace LinkerConsoleApp
+﻿namespace Linker
 {
     public class LinkerSettings
     {
@@ -11,20 +8,16 @@ namespace LinkerConsoleApp
     {
         public Origin Origin { get; set; }
         public Destination Destination { get; set; }
-        public IEnumerable<Filter> Filters { get; set; }
+        public IEnumerable<Filter>? Filters { get; set; }
     }
     public class Origin
     {
         public string ConnectionString { get; set; }
-        public string User { get; set; }
-        public string Pass { get; set; }
         public string ConnectionName { get; set; }
     }
     public class Destination
     {
         public string ConnectionString { get; set; }
-        public string User { get; set; }
-        public string Pass { get; set; }
         public string ConnectionName { get; set; }
     }
 }
