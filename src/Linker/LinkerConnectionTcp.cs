@@ -7,8 +7,10 @@ public class LinkerConnectionTcp : ILinkerConnection
     //private readonly ILogger<LinkerConnectionTcp> _logger;
     private readonly string _name;
     private readonly IEventStoreConnection _connection;
+    public delegate void ConnectedEventHandler(object sender, EventArgs e);
+    public event ConnectedEventHandler Connected;
 
-    public LinkerConnectionTcp(string connectionString,string name)
+    public LinkerConnectionTcp(string connectionString, string name)
     {
         //_logger = logger;
         _name = name;
@@ -25,23 +27,23 @@ public class LinkerConnectionTcp : ILinkerConnection
 
     public async Task Start()
     {
-        _connection?.Close();
+        //_connection?.Close();
         _connection.ErrorOccurred += ErrorOccurred;
         _connection.Disconnected += Disconnected;
         _connection.AuthenticationFailed += AuthenticationFailed;
-        _connection.Connected += Connected;
+        _connection.Connected += InternalConnection_Connected;
         _connection.Reconnecting += Reconnecting;
         await _connection.ConnectAsync();
     }
 
-    private void Connected(object? sender, ClientConnectionEventArgs e)
+    private void InternalConnection_Connected(object? sender, ClientConnectionEventArgs e)
     {
-        throw new NotImplementedException();
+        Connected?.Invoke(this, e);
     }
 
     private void Disconnected(object? sender, ClientConnectionEventArgs e)
     {
-        throw new NotImplementedException();
+        // TODO
     }
 
     private void ErrorOccurred(object? sender, ClientErrorEventArgs e)

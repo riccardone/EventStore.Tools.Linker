@@ -5,7 +5,9 @@ VisualStudioVersion = 17.4.33213.308
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Linker", "Linker\Linker.csproj", "{163793CE-4A1F-43AE-BBEA-0CBBB456171F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LinkerApp", "LinkerApp\LinkerApp.csproj", "{EE0B17CB-7BF6-4A3D-A7DF-845163EA77D4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LinkerApp", "LinkerApp\LinkerApp.csproj", "{EE0B17CB-7BF6-4A3D-A7DF-845163EA77D4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LinkerSimpleApp", "LinkerSimpleApp\LinkerSimpleApp.csproj", "{99541A81-27CC-4E2B-87CC-D26E17E14594}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{EE0B17CB-7BF6-4A3D-A7DF-845163EA77D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EE0B17CB-7BF6-4A3D-A7DF-845163EA77D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EE0B17CB-7BF6-4A3D-A7DF-845163EA77D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99541A81-27CC-4E2B-87CC-D26E17E14594}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99541A81-27CC-4E2B-87CC-D26E17E14594}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99541A81-27CC-4E2B-87CC-D26E17E14594}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99541A81-27CC-4E2B-87CC-D26E17E14594}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

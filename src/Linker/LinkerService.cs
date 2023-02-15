@@ -23,7 +23,7 @@ public class LinkerService : ILinkerService
     private readonly System.Timers.Timer _timerForStats;
     private readonly LinkerHelper _replicaHelper;
     private PerfTuneSettings _perfTunedSettings;
-    private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new ConcurrentQueue<BufferedEvent>();
+    private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new();
     private readonly System.Timers.Timer _processor;
     private readonly bool _resolveLinkTos;
 
@@ -62,11 +62,13 @@ public class LinkerService : ILinkerService
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
         ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings) : this(
         originBuilder, destinationBuilder, positionRepository, filterService, settings,
-        new SimpleConsoleLogger(nameof(LinkerService))) { }
+        new SimpleConsoleLogger(nameof(LinkerService)))
+    { }
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IFilterService filterService, Settings settings) : this(originBuilder,destinationBuilder, new PositionRepositoryV5($"PositionStream-{destinationBuilder.ConnectionName}",
-        "PositionUpdated", destinationBuilder.Build()), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService))) { }
+        IFilterService filterService, Settings settings) : this(originBuilder, destinationBuilder, new PositionRepositoryV5($"PositionStream-{destinationBuilder.ConnectionName}",
+        "PositionUpdated", destinationBuilder.Build()), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService)))
+    { }
 
     public async Task<bool> Start()
     {
@@ -78,6 +80,8 @@ public class LinkerService : ILinkerService
         //_destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
         //_destinationConnection.Connected += DestinationConnection_Connected;
         //_destinationConnection.Reconnecting += _destinationConnection_Reconnecting;
+        _destinationConnection = _connectionBuilderForDestination.Build();
+        _destinationConnection.Connected += _destinationConnection_Connected;
         await _destinationConnection.Start();
 
         //_originConnection?.Close();
@@ -87,10 +91,24 @@ public class LinkerService : ILinkerService
         //_originConnection.AuthenticationFailed += OriginConnection_AuthenticationFailed;
         //_originConnection.Connected += OriginConnection_Connected;
         //_originConnection.Reconnecting += _originConnection_Reconnecting;
+        _originConnection = _connectionBuilderForOrigin.Build();
         await _originConnection.Start();
 
         _logger.Info($"{Name} started");
         return true;
+    }
+
+    private void _destinationConnection_Connected(object sender, EventArgs e)
+    {
+        //    _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
+        _positionRepository.Start();
+        _lastPosition = _positionRepository.Get();
+        Subscribe(_lastPosition);
+        _processor.Enabled = true;
+        _processor.Start();
+        _timerForStats.Enabled = true;
+        _timerForStats.Start();
+        _started = true;
     }
 
     public Task<bool> Stop()
@@ -351,7 +369,7 @@ public class LinkerService : ILinkerService
                                     _replicaHelper.DeserializeObject(ev1.EventData.Metadata)))
                             {
                                 _logger.Warn($"Error while handling conflicts: {a.Exception.InnerException.Message}");
-                            } 
+                            }
                         }
                     }, TaskContinuationOptions.OnlyOnFaulted).ContinueWith(a =>
                     {

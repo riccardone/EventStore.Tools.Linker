@@ -21,6 +21,8 @@ public class LinkerConnectionGrpc : ILinkerConnection
                 .ToList()); // TODO check how to map eventNumber to ExpectedRevision or ExpectedState
     }
 
+    public event LinkerConnectionTcp.ConnectedEventHandler? Connected;
+
     public Task Start()
     {
         return Task.CompletedTask;

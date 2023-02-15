@@ -18,4 +18,14 @@ public class PositionRepositoryV5 : ILinkerPositionRepository
     {
         throw new System.NotImplementedException();
     }
+
+    public void Start()
+    {
+        // TODO
+    }
+
+    public Position Get()
+    {
+        return new Position();
+    }
 }
