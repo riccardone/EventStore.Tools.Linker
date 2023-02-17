@@ -5,16 +5,14 @@ namespace Linker;
 public class LinkerConnectionTcp : ILinkerConnection
 {
     //private readonly ILogger<LinkerConnectionTcp> _logger;
-    private readonly string _name;
     private readonly IEventStoreConnection _connection;
     public delegate void ConnectedEventHandler(object sender, EventArgs e);
     public event ConnectedEventHandler Connected;
 
-    public LinkerConnectionTcp(string connectionString, string name)
+    public LinkerConnectionTcp(string connectionString, string connectionName)
     {
         //_logger = logger;
-        _name = name;
-        _connection = EventStoreConnection.Create(new Uri(connectionString));
+        _connection = EventStoreConnection.Create(new Uri(connectionString), connectionName);
     }
 
     public async Task AppendToStreamAsync(string streamId, long eventNumber, LinkerEventData[] eventData)

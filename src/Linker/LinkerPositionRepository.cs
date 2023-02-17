@@ -1,12 +1,12 @@
 ﻿namespace Linker;
 
-public class PositionRepositoryV5 : ILinkerPositionRepository
+public class LinkerPositionRepository : ILinkerPositionRepository
 {
     private readonly string _name;
     private readonly string _streamUpdatedName;
     private readonly ILinkerConnection _connection;
 
-    public PositionRepositoryV5(string name, string streamUpdatedName, ILinkerConnection connection)
+    public LinkerPositionRepository(string name, string streamUpdatedName, ILinkerConnection connection)
     {
         _name = name;
         _streamUpdatedName = streamUpdatedName;
@@ -21,11 +21,16 @@ public class PositionRepositoryV5 : ILinkerPositionRepository
 
     public void Start()
     {
-        // TODO
+        _connection.Start();
     }
 
     public Position Get()
     {
         return new Position();
+    }
+
+    public void Stop()
+    {
+        _connection.Stop();
     }
 }

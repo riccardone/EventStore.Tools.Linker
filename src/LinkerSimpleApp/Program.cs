@@ -51,6 +51,7 @@ class Program
         }
         else
             Log.Error("The test event has not been replicated correctly");
+        senderForTestEvents.Close();
     }
 
     private static Guid AppendEvent(string body, string stream, string eventType, IEventStoreConnection conn)
@@ -59,6 +60,7 @@ class Program
         var guid = Guid.NewGuid();
         conn.AppendToStreamAsync(stream, EventStore.ClientAPI.ExpectedVersion.Any,
             new List<EventData> { new EventData(guid, eventType, true, Encoding.ASCII.GetBytes(body), null) }).Wait();
+        conn.Close();
         return guid;
     }
 
@@ -66,6 +68,7 @@ class Program
     {
         destination.ConnectAsync().Wait();
         var result = destination.ReadEventAsync(stream, StreamPosition.End, false).Result;
+        destination.Close();
         return result.Status == EventReadStatus.NoStream ? null : result.Event?.Event.EventId;
     }
 

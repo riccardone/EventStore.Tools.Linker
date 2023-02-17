@@ -7,9 +7,10 @@ public class LinkerConnectionGrpc : ILinkerConnection
 {
     private readonly EventStoreClient _eventStoreClient;
 
-    public LinkerConnectionGrpc(string connectionString)
+    public LinkerConnectionGrpc(string connectionString, string connectionName)
     {
         var settings = EventStoreClientSettings.Create(connectionString);
+        settings.ConnectionName = connectionName;
         _eventStoreClient = new EventStoreClient(settings);
     }
 

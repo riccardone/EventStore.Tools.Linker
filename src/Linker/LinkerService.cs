@@ -6,6 +6,7 @@ namespace Linker;
 public class LinkerService : ILinkerService
 {
     private readonly ILinkerLogger _logger;
+    private readonly ILinkerSubscriber _linkerSubscriber;
     private readonly ILinkerPositionRepository _positionRepository;
     private readonly IFilterService _filterService;
     private readonly bool _handleConflicts;
@@ -28,13 +29,14 @@ public class LinkerService : ILinkerService
     private readonly bool _resolveLinkTos;
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger)
+        ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger, ILinkerSubscriber linkerSubscriber)
     {
         Ensure.NotNull(originBuilder, nameof(originBuilder));
         Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
         Ensure.NotNull(positionRepository, nameof(positionRepository));
 
         _logger = logger;
+        _linkerSubscriber = linkerSubscriber;
         Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
         _connectionBuilderForOrigin = originBuilder;
         _connectionBuilderForDestination = destinationBuilder;
@@ -54,20 +56,14 @@ public class LinkerService : ILinkerService
     }
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IFilterService filterService, Settings settings, ILinkerLogger logger) : this(
-        originBuilder, destinationBuilder, new PositionRepositoryV5($"PositionStream-{destinationBuilder.ConnectionName}",
-            "PositionUpdated", destinationBuilder.Build()), filterService, settings, logger)
-    { }
-
-    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings) : this(
+        ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerSubscriber linkerSubscriber) : this(
         originBuilder, destinationBuilder, positionRepository, filterService, settings,
-        new SimpleConsoleLogger(nameof(LinkerService)))
+        new SimpleConsoleLogger(nameof(LinkerService)), linkerSubscriber)
     { }
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IFilterService filterService, Settings settings) : this(originBuilder, destinationBuilder, new PositionRepositoryV5($"PositionStream-{destinationBuilder.ConnectionName}",
-        "PositionUpdated", destinationBuilder.Build()), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService)))
+        IFilterService filterService, Settings settings, ILinkerSubscriber linkerSubscriber) : this(originBuilder, destinationBuilder, new LinkerPositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
+        "PositionUpdated", destinationBuilder.Build($"{destinationBuilder.ConnectionName}-positionrepository")), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService)), linkerSubscriber)
     { }
 
     public async Task<bool> Start()
@@ -100,7 +96,7 @@ public class LinkerService : ILinkerService
 
     private void _destinationConnection_Connected(object sender, EventArgs e)
     {
-        //    _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
+        // _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
         _positionRepository.Start();
         _lastPosition = _positionRepository.Get();
         Subscribe(_lastPosition);
@@ -117,7 +113,7 @@ public class LinkerService : ILinkerService
         //_destinationConnection.ErrorOccurred -= DestinationConnection_ErrorOccurred;
         //_destinationConnection.Disconnected -= DestinationConnection_Disconnected;
         //_destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
-        //_destinationConnection.Connected -= DestinationConnection_Connected;
+        _destinationConnection.Connected -= _destinationConnection_Connected;
         //_destinationConnection.Reconnecting -= _destinationConnection_Reconnecting;
 
         //_originConnection.ErrorOccurred -= OriginConnection_ErrorOccurred;
@@ -130,7 +126,7 @@ public class LinkerService : ILinkerService
         //_allCatchUpSubscription?.Stop();
         //_destinationConnection?.Close();
         //_originConnection?.Close();
-        //_positionRepository.Stop();
+        _positionRepository.Stop();
         _timerForStats.Stop();
         _totalProcessedMessagesCurrent = 0;
         _started = false;
@@ -145,7 +141,6 @@ public class LinkerService : ILinkerService
         try
         {
             _processor.Stop();
-            // TODO
             //_allCatchUpSubscription.Stop();
             var watch = System.Diagnostics.Stopwatch.StartNew();
             var eventsToProcess = _internalBuffer.Count;

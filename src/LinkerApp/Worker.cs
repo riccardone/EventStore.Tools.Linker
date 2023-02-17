@@ -36,7 +36,7 @@ public class Worker : BackgroundService
             var filterService = new FilterService(filters);
             var service = new LinkerService(new LinkerConnectionBuilder(new Uri(link.Origin.ConnectionString),
                 link.Origin.ConnectionName), new LinkerConnectionBuilder(new Uri(link.Destination.ConnectionString),
-                link.Destination.ConnectionName), filterService, Settings.Default());
+                link.Destination.ConnectionName), filterService, Settings.Default(), new LinkerSubscriber());
             services.Add(service);
         }
         await StartServices(services);
