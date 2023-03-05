@@ -2,9 +2,9 @@
 
 public interface ILinkerPositionRepository
 {
-    string PositionEventType { get; set; }
+    string PositionEventType { get; }
     void Set(Position lastPosition);
-    public void Start();
+    public Task StartAsync();
     public void Stop();
     Position Get();
 }

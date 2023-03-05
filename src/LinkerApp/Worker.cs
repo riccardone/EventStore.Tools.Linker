@@ -6,20 +6,20 @@ namespace LinkerApp;
 public class Worker : BackgroundService
 {
     private readonly IHostApplicationLifetime _hostApplicationLifetime;
-    private readonly LinkerSettings _linkerSettings;
+    private readonly LinkerConnections _linkerConnections;
     private readonly ILogger<Worker> _logger;
 
-    public Worker(ILogger<Worker> logger, IHostApplicationLifetime hostApplicationLifetime, IOptions<LinkerSettings> options)
+    public Worker(ILogger<Worker> logger, IHostApplicationLifetime hostApplicationLifetime, IOptions<LinkerConnections> options)
     {
         _logger = logger;
         _hostApplicationLifetime = hostApplicationLifetime;
-        _linkerSettings = options.Value;
+        _linkerConnections = options.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var services = new List<Linker.LinkerService>();
-        foreach (var link in _linkerSettings.Links)
+        foreach (var link in _linkerConnections.Links)
         {
             if (link.Filters == null || !link.Filters.Any())
             {
@@ -36,7 +36,7 @@ public class Worker : BackgroundService
             var filterService = new FilterService(filters);
             var service = new LinkerService(new LinkerConnectionBuilder(new Uri(link.Origin.ConnectionString),
                 link.Origin.ConnectionName), new LinkerConnectionBuilder(new Uri(link.Destination.ConnectionString),
-                link.Destination.ConnectionName), filterService, Settings.Default(), new LinkerSubscriber());
+                link.Destination.ConnectionName), filterService, LinkerSettings.Default(), new LinkerSubscriber(), link.Destination.ConnectionString);
             services.Add(service);
         }
         await StartServices(services);

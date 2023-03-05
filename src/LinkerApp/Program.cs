@@ -14,7 +14,7 @@ public class Program
             .ConfigureServices((hostContext, services) =>
             {
                 var configuration = hostContext.Configuration;
-                services.Configure<LinkerSettings>(configuration.GetSection(nameof(LinkerSettings)));
+                services.Configure<LinkerConnections>(configuration.GetSection(nameof(LinkerConnections)));
                 services.AddHostedService<Worker>();
             });
 }

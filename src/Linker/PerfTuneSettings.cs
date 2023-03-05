@@ -13,8 +13,8 @@ public class PerfTuneSettings : ICloneable
         ReadBatchSize = readBatchSize;
     }
 
-    public static PerfTuneSettings Default => new PerfTuneSettings(Settings.Default().MaxBufferSize,
-        Settings.Default().MaxLiveQueue, Settings.Default().ReadBatchSize);
+    public static PerfTuneSettings Default => new PerfTuneSettings(LinkerSettings.Default().MaxBufferSize,
+        LinkerSettings.Default().MaxLiveQueue, LinkerSettings.Default().ReadBatchSize);
 
     public override string ToString()
     {

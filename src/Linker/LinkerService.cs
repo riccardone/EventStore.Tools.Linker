@@ -1,5 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Timers;
+using EventStore.Client;
+using EventStore.PositionRepository;
 
 namespace Linker;
 
@@ -29,7 +31,7 @@ public class LinkerService : ILinkerService
     private readonly bool _resolveLinkTos;
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger, ILinkerSubscriber linkerSubscriber)
+        ILinkerPositionRepository positionRepository, IFilterService filterService, LinkerSettings settings, ILinkerLogger logger, ILinkerSubscriber linkerSubscriber)
     {
         Ensure.NotNull(originBuilder, nameof(originBuilder));
         Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
@@ -56,14 +58,19 @@ public class LinkerService : ILinkerService
     }
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        ILinkerPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerSubscriber linkerSubscriber) : this(
+        ILinkerPositionRepository positionRepository, IFilterService filterService, LinkerSettings settings, ILinkerSubscriber linkerSubscriber) : this(
         originBuilder, destinationBuilder, positionRepository, filterService, settings,
         new SimpleConsoleLogger(nameof(LinkerService)), linkerSubscriber)
     { }
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IFilterService filterService, Settings settings, ILinkerSubscriber linkerSubscriber) : this(originBuilder, destinationBuilder, new LinkerPositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
-        "PositionUpdated", destinationBuilder.Build($"{destinationBuilder.ConnectionName}-positionrepository")), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService)), linkerSubscriber)
+        IFilterService filterService, LinkerSettings settings, ILinkerSubscriber linkerSubscriber, string connectionString) : this(originBuilder, destinationBuilder, new LinkerPositionRepositoryTcp($"PositionStream-{destinationBuilder.ConnectionName}",
+        "PositionUpdated", new ConnectionBuilder(new Uri(connectionString), EventStore.ClientAPI.ConnectionSettings.Default, $"{destinationBuilder.ConnectionName}-positionrepository")), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService)), linkerSubscriber)
+    { }
+
+    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
+        IFilterService filterService, LinkerSettings settings, string connectionString) : this(originBuilder, destinationBuilder, new LinkerPositionRepositoryTcp($"PositionStream-{destinationBuilder.ConnectionName}",
+        "PositionUpdated", new ConnectionBuilder(new Uri(connectionString), EventStore.ClientAPI.ConnectionSettings.Default, $"{destinationBuilder.ConnectionName}-positionrepository")), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService)), new LinkerSubscriber())
     { }
 
     public async Task<bool> Start()
@@ -77,7 +84,7 @@ public class LinkerService : ILinkerService
         //_destinationConnection.Connected += DestinationConnection_Connected;
         //_destinationConnection.Reconnecting += _destinationConnection_Reconnecting;
         _destinationConnection = _connectionBuilderForDestination.Build();
-        _destinationConnection.Connected += _destinationConnection_Connected;
+        _destinationConnection.Connected += DestinationConnection_Connected;
         await _destinationConnection.Start();
 
         //_originConnection?.Close();
@@ -94,10 +101,10 @@ public class LinkerService : ILinkerService
         return true;
     }
 
-    private void _destinationConnection_Connected(object sender, EventArgs e)
+    private void DestinationConnection_Connected(object sender, EventArgs e)
     {
         // _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
-        _positionRepository.Start();
+        _positionRepository.StartAsync().Wait();
         _lastPosition = _positionRepository.Get();
         Subscribe(_lastPosition);
         _processor.Enabled = true;
@@ -113,7 +120,7 @@ public class LinkerService : ILinkerService
         //_destinationConnection.ErrorOccurred -= DestinationConnection_ErrorOccurred;
         //_destinationConnection.Disconnected -= DestinationConnection_Disconnected;
         //_destinationConnection.AuthenticationFailed += DestinationConnection_AuthenticationFailed;
-        _destinationConnection.Connected -= _destinationConnection_Connected;
+        _destinationConnection.Connected -= DestinationConnection_Connected;
         //_destinationConnection.Reconnecting -= _destinationConnection_Reconnecting;
 
         //_originConnection.ErrorOccurred -= OriginConnection_ErrorOccurred;
@@ -141,7 +148,7 @@ public class LinkerService : ILinkerService
         try
         {
             _processor.Stop();
-            //_allCatchUpSubscription.Stop();
+            _allCatchUpSubscription.Stop();
             var watch = System.Diagnostics.Stopwatch.StartNew();
             var eventsToProcess = _internalBuffer.Count;
             var oldPerfSettings = _perfTunedSettings.Clone() as PerfTuneSettings;
@@ -257,8 +264,10 @@ public class LinkerService : ILinkerService
     private void Subscribe(Position position)
     {
         // TODO
-        //_allCatchUpSubscription = _originConnection.SubscribeToAllFrom(position,
-        //    BuildSubscriptionSettings(), EventAppeared, LiveProcessingStarted, SubscriptionDropped);
+        var client = new EventStoreClient();
+        client.SubscribeToAllAsync()
+        _allCatchUpSubscription = _originConnection.SubscribeToAllFrom(position,
+            BuildSubscriptionSettings(), EventAppeared, LiveProcessingStarted, SubscriptionDropped);
         _logger.Debug($"Subscribed from position: {position}");
     }
 
@@ -297,7 +306,7 @@ public class LinkerService : ILinkerService
             if (resolvedEvent.Event == null || resolvedEvent.OriginalPosition == null)
                 return Task.CompletedTask;
             return EventAppeared(new BufferedEvent(resolvedEvent.Event.EventStreamId,
-                resolvedEvent.Event.EventNumber, resolvedEvent.OriginalPosition.Value,
+                resolvedEvent.Event.EventNumber, resolvedEvent.OriginalPosition,
                 new LinkerEventData(resolvedEvent.Event.EventId, resolvedEvent.Event.EventType,
                     resolvedEvent.Event.IsJson, resolvedEvent.Event.Data, resolvedEvent.Event.Metadata),
                 resolvedEvent.Event.Created));

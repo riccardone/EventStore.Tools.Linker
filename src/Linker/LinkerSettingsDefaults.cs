@@ -1,6 +1,6 @@
 ﻿namespace Linker;
 
-public static class SettingsDefaults
+public static class LinkerSettingsDefaults
 {
     public const int SynchronisationInterval = 1000;
     public const bool HandleConflicts = false;

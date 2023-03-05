@@ -28,7 +28,7 @@ class Program
             new(FilterType.EventType, "User*", FilterOperation.Include),
             new(FilterType.Stream, "domain-*", FilterOperation.Include),
             new(FilterType.EventType, "Basket*", FilterOperation.Exclude)
-        }), Settings.Default());
+        }), LinkerSettings.Default(), destination.ConnectionString.ToString());
         service.Start().Wait();
         Log.Info("Replica Service started");
         TestReplicaForSampleEvent(destination, "domain-test-01", "UserReplicaTested");
