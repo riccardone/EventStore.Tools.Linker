@@ -1,7 +1,4 @@
-﻿using Linker;
-using NUnit.Framework;
-
-namespace Tests
+﻿namespace Tests
 {
     [TestFixture]
     public class OptimiseSettingsTests

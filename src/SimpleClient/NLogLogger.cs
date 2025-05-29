@@ -1,8 +1,4 @@
-﻿using System;
-using Linker;
-using NLog;
-
-namespace SimpleClient
+﻿namespace SimpleClient
 {
     public class NLogLogger : ILinkerLogger
     {

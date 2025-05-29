@@ -1,15 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
-using EventStore.ClientAPI;
-using EventStore.ClientAPI.SystemData;
-using Linker;
-using NLog;
-using NLog.Config;
-using NLog.Targets;
-
-namespace SimpleClient
+﻿namespace SimpleClient
 {
     class Program
     {

@@ -1,9 +1,3 @@
-using EventStore.ClientAPI;
-using EventStore.PositionRepository;
-using Linker;
-using Moq;
-using NUnit.Framework;
-
 namespace Tests
 {
     public class LinkerServiceTests

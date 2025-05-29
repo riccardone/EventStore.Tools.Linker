@@ -1,15 +1,9 @@
-﻿using System;
-using EventStore.ClientAPI;
+﻿using KurrentDB.Client;
 
-namespace Linker
+namespace Linker;
+
+public interface ILinkerConnectionBuilder
 {
-    public interface ILinkerConnectionBuilder
-    {
-        [Obsolete]
-        Uri ConnectionString { get; }
-        [Obsolete]
-        ConnectionSettings ConnectionSettings { get; }
-        string ConnectionName { get; }
-        IEventStoreConnection Build();
-    }
+    string ConnectionName { get; }
+    KurrentDBClient Build();
 }
