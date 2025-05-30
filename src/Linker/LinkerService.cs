@@ -100,7 +100,19 @@ public class LinkerService : ILinkerService
 
     private async Task SubscribeMeGrpc(CancellationToken ctsToken)
     {
-        throw new NotImplementedException();
+        await using var subscription = _originConnection.SubscribeToAll(
+            FromAll.Start,
+            cancellationToken: ctsToken);
+        await foreach (var message in subscription.Messages)
+        {
+            switch (message)
+            {
+                case StreamMessage.Event(var evnt):
+                    Console.WriteLine($"Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
+                    await HandleEvent(evnt);
+                    break;
+            }
+        }
     }
 
     public async Task<bool> Stop()
@@ -154,74 +166,6 @@ public class LinkerService : ILinkerService
         var current = _totalProcessedMessagesCurrent;
         _processedMessagesPerSeconds = _replicaHelper.CalculateSpeed(current, _totalProcessedMessagesPerSecondsPrevious);
         _totalProcessedMessagesPerSecondsPrevious = current;
-    }
-
-    private void _originConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
-    {
-        _logger.Debug($"{Name} Origin Reconnecting...");
-    }
-
-    private void _destinationConnection_Reconnecting(object sender, ClientReconnectingEventArgs e)
-    {
-        _logger.Debug($"{Name} Destination Reconnecting...");
-    }
-
-    private void OriginConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
-    {
-        _logger.Warn($"AuthenticationFailed to {_originConnection.ConnectionName}: {e.Reason}");
-    }
-
-    private void OriginConnection_Connected(object sender, ClientConnectionEventArgs e)
-    {
-        _logger.Debug($"SubscriberConnection Connected to: {e.RemoteEndPoint}");
-        _positionRepository.Start();
-        _lastPosition = _positionRepository.Get();
-        Subscribe(_lastPosition);
-        _processor.Enabled = true;
-        _processor.Start();
-        _timerForStats.Enabled = true;
-        _timerForStats.Start();
-        _started = true;
-    }
-
-    private void OriginConnection_Disconnected(object sender, ClientConnectionEventArgs e)
-    {
-        _logger.Warn($"{Name} disconnected from {e.RemoteEndPoint}");
-        Stop();
-        Start();
-    }
-
-    private void OriginConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
-    {
-        _logger.Error(e.Exception.GetBaseException().Message);
-        Stop();
-        Start();
-    }
-
-    private void DestinationConnection_Connected(object sender, ClientConnectionEventArgs e)
-    {
-        _logger.Debug($"{_destinationConnection.ConnectionName} Connected to: {e.RemoteEndPoint}");
-    }
-
-    private void DestinationConnection_AuthenticationFailed(object sender, ClientAuthenticationFailedEventArgs e)
-    {
-        _logger.Warn($"AuthenticationFailed with {_destinationConnection.ConnectionName}: {e.Reason}");
-        if (!_started) return;
-        _logger.Warn($"Restart {Name}...");
-        Stop();
-        Start();
-    }
-
-    private void DestinationConnection_Disconnected(object sender, ClientConnectionEventArgs e)
-    {
-        _logger.Warn($"{_destinationConnection.ConnectionName} disconnected from '{e.RemoteEndPoint}'");
-        Stop();
-        Start();
-    }
-
-    private void DestinationConnection_ErrorOccurred(object sender, ClientErrorEventArgs e)
-    {
-        _logger.Error($"Error with {_destinationConnection.ConnectionName}: {e.Exception.GetBaseException().Message}");
     }
 
     public IDictionary<string, dynamic> GetStats()
