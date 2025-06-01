@@ -1,7 +1,8 @@
-﻿using System.Collections.Concurrent;
-using System.Timers;
-using EventStore.PositionRepository.Gprc;
+﻿using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
+using System.Collections.Concurrent;
+using System.Text;
+using System.Timers;
 
 namespace Linker;
 
@@ -100,16 +101,15 @@ public class LinkerService : ILinkerService
 
     private async Task SubscribeMeGrpc(CancellationToken ctsToken)
     {
-        await using var subscription = _originConnection.SubscribeToAll(
-            FromAll.Start,
-            cancellationToken: ctsToken);
+        await using var subscription = _originConnection.SubscribeToAll(FromAll.Start, cancellationToken: ctsToken,
+            resolveLinkTos: false, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {
             switch (message)
             {
                 case StreamMessage.Event(var evnt):
-                    Console.WriteLine($"Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
-                    await HandleEvent(evnt);
+                    _logger.Debug($"Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
+                    await EventAppeared(evnt);
                     break;
             }
         }
@@ -129,7 +129,7 @@ public class LinkerService : ILinkerService
         return true; // Task.FromResult(true);
     }
 
-    private void Processor_Elapsed(object sender, ElapsedEventArgs e)
+    private async Task Processor_Elapsed(object sender, ElapsedEventArgs e)
     {
         if (_internalBuffer.IsEmpty)
             return;
@@ -150,7 +150,7 @@ public class LinkerService : ILinkerService
                 _logger.Debug($"{Name} Old PerfSettings: {oldPerfSettings}");
                 _logger.Debug($"{Name} New PerfSettings: {_perfTunedSettings}");
             }
-            Subscribe(_lastPosition);
+            await SubscribeMeGrpc(new CancellationToken());
             _processor.Start();
         }
         catch (Exception exception)
@@ -181,40 +181,7 @@ public class LinkerService : ILinkerService
         };
     }
 
-    private void Subscribe(Position position)
-    {
-        _allCatchUpSubscription = _originConnection.SubscribeToAllFrom(position,
-            BuildSubscriptionSettings(), EventAppeared, LiveProcessingStarted, SubscriptionDropped);
-        _logger.Debug($"Subscribed from position: {position}");
-    }
-
-    private void SubscriptionDropped(EventStoreCatchUpSubscription eventStoreCatchUpSubscription, SubscriptionDropReason subscriptionDropReason, Exception arg3)
-    {
-        if (!_started)
-            return;
-        if (subscriptionDropReason == SubscriptionDropReason.UserInitiated)
-            return;
-        if (arg3?.GetBaseException() is ObjectDisposedException)
-            return;
-        _logger.Warn($"Cross Replica Resubscribing... (reason: {subscriptionDropReason})");
-        if (arg3 != null)
-            _logger.Error($"exception: {arg3.GetBaseException().Message}");
-        _lastPosition = _positionRepository.Get();
-        Subscribe(_lastPosition);
-    }
-
-    private CatchUpSubscriptionSettings BuildSubscriptionSettings()
-    {
-        return new CatchUpSubscriptionSettings(_perfTunedSettings.MaxLiveQueue, _perfTunedSettings.ReadBatchSize,
-            CatchUpSubscriptionSettings.Default.VerboseLogging, _resolveLinkTos);
-    }
-
-    private void LiveProcessingStarted(EventStoreCatchUpSubscription eventStoreCatchUpSubscription)
-    {
-        _logger.Debug($"'{Name}' Started");
-    }
-
-    protected Task EventAppeared(EventStoreCatchUpSubscription eventStoreCatchUpSubscription, ResolvedEvent resolvedEvent)
+    private Task EventAppeared(ResolvedEvent resolvedEvent)
     {
         try
         {
@@ -234,7 +201,7 @@ public class LinkerService : ILinkerService
         return Task.CompletedTask;
     }
 
-    internal Task EventAppeared(BufferedEvent resolvedEvent)
+    private Task EventAppeared(BufferedEvent resolvedEvent)
     {
         if (!_replicaHelper.IsValidForReplica(resolvedEvent.EventData.Type, resolvedEvent.StreamId,
                 resolvedEvent.OriginalPosition, _positionRepository.PositionEventType, _filterService))

@@ -5,12 +5,12 @@ namespace Linker;
 public class BufferedEvent : IComparable<BufferedEvent>
 {
     public string StreamId { get; }
-    public long EventNumber { get; }
+    public StreamPosition EventNumber { get; }
     public Position OriginalPosition { get; }
     public EventData EventData { get; }
     public DateTime Created { get; }
 
-    public BufferedEvent(string streamId, long eventNumber, Position originalPosition, EventData eventData, DateTime created)
+    public BufferedEvent(string streamId, StreamPosition eventNumber, Position originalPosition, EventData eventData, DateTime created)
     {
         StreamId = streamId;
         EventNumber = eventNumber;
