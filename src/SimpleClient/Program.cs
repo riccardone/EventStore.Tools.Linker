@@ -1,80 +1,116 @@
-﻿namespace SimpleClient
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading.Tasks;
+using EventStore.PositionRepository.Gprc;
+using KurrentDB.Client;
+using Linker;
+using NLog;
+using NLog.Config;
+using NLog.Targets;
+
+namespace SimpleClient;
+
+static class Program
 {
-    class Program
+    private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+
+    static async Task Main(string[] args)
     {
-        // For testing you can run two EventStore instances on your dev machine with the following settings
-        // --int-tcp-port=1111 --ext-tcp-port=1112 --int-http-port=1113 --ext-http-port=1114
-        // --int-tcp-port=2111 --ext-tcp-port=2112 --int-http-port=2113 --ext-http-port=2114
+        ConfigureLogging();
 
-        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        var origin = new LinkerConnectionBuilder(KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2113?tls=false"),  "origin-01");
+        var destination = new LinkerConnectionBuilder(KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2123?tls=false"), "destination-01");
 
-        static void Main(string[] args)
-        {
-            ConfigureLogging();
-            var connSettings = ConnectionSettings.Create().SetDefaultUserCredentials(new UserCredentials("admin", "changeit"));
-            var origin = new LinkerConnectionBuilder(new Uri("tcp://localhost:1112"), connSettings, "origin-01");
-            var destination = new LinkerConnectionBuilder(new Uri("tcp://localhost:2112"), connSettings, "destination-01");
-            var service = new LinkerService(origin, destination, new FilterService(new List<Filter>
-                {
-                    new Filter(FilterType.EventType, "User*", FilterOperation.Include),
-                    new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
-                    new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
-                }), Settings.Default(), new NLogLogger());
-            service.Start().Wait();
-            Log.Info("Replica Service started");
-            TestReplicaForSampleEvent(connSettings, destination, "domain-test-01", "UserReplicaTested");
-            Log.Info("Press enter to exit the program");
-            Console.ReadLine();
-        }
-
-        private static void TestReplicaForSampleEvent(ConnectionSettings connSettings, ILinkerConnectionBuilder connBuilder, string stream, string eventType)
-        {
-            var senderForTestEvents = new LinkerConnectionBuilder(new Uri("tcp://localhost:1112"), connSettings, "sender");
-            var guidOnOrigin = AppendEvent("{name:'for test...'}", stream, eventType, senderForTestEvents);
-            Log.Info($"the id saved on the origin database is {guidOnOrigin}");
-            Thread.Sleep(3000);
-            var guidOnDestination = ReadLastEventId(stream, connBuilder);
-            if (guidOnDestination.Equals(guidOnOrigin))
+        var service = new LinkerService(
+            origin,
+            destination, new PositionRepository("DestinationPosition", "DestinationPosition", destination.Build()),
+            new FilterService(new List<Filter>
             {
-                Log.Info($"the last replicated id on the destination database is {guidOnDestination}");
-                Log.Info("The test event has been replicated correctly!");
-            }
-            else
-                Log.Error("The test event has not been replicated correctly");
+                new Filter(FilterType.EventType, "User*", FilterOperation.Include),
+                new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
+                new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
+            }),
+            Settings.Default(),
+            new NLogLogger());
+
+        await service.Start();
+        Log.Info("Replica Service started");
+
+        await TestReplicaForSampleEvent(origin, destination, "domain-test-01", "UserReplicaTested");
+
+        Log.Info("Press enter to exit the program");
+        Console.ReadLine();
+    }
+
+    private static async Task TestReplicaForSampleEvent(
+        ILinkerConnectionBuilder senderBuilder,
+        ILinkerConnectionBuilder destinationBuilder,
+        string stream,
+        string eventType)
+    {
+        var guidOnOrigin = await AppendEventAsync("{\"name\":\"for test...\"}", stream, eventType, senderBuilder);
+        Log.Info($"The ID saved on the origin database is {guidOnOrigin}");
+
+        await Task.Delay(3000); // Give time for replication
+
+        var guidOnDestination = await ReadLastEventIdAsync(stream, destinationBuilder);
+        if (guidOnDestination == guidOnOrigin)
+        {
+            Log.Info($"The last replicated ID on the destination database is {guidOnDestination}");
+            Log.Info("The test event has been replicated correctly!");
+        }
+        else
+        {
+            Log.Error("The test event has NOT been replicated correctly.");
+        }
+    }
+
+    private static async Task<Guid> AppendEventAsync(
+        string jsonBody,
+        string stream,
+        string eventType,
+        ILinkerConnectionBuilder senderBuilder)
+    {
+        await using var conn = senderBuilder.Build();
+        var guid = Guid.NewGuid();
+
+        var data = Encoding.UTF8.GetBytes(jsonBody);
+        var evt = new EventData(Uuid.FromGuid(guid), eventType, data);
+
+        await conn.AppendToStreamAsync(stream, StreamState.Any, new[] { evt });
+        return guid;
+    }
+
+    private static async Task<Guid?> ReadLastEventIdAsync(
+        string stream,
+        ILinkerConnectionBuilder destinationBuilder)
+    {
+        await using var conn = destinationBuilder.Build();
+
+        // Read from the stream starting from the end, but since KurrentDB reads forward,
+        // you'll need to fetch the last known count and subtract to read from near-end
+        const int batchSize = 1;
+
+        var result = conn.ReadStreamAsync(Direction.Backwards,stream, batchSize);
+
+        await foreach (var resolvedEvent in result)
+        {
+            return resolvedEvent.Event.EventId.ToGuid();
         }
 
-        private static Guid AppendEvent(string body, string stream, string eventType, ILinkerConnectionBuilder senderConnectionBuilder)
-        {
-            using (var conn = senderConnectionBuilder.Build())
-            {
-                conn.ConnectAsync().Wait();
-                var guid = Guid.NewGuid();
-                conn.AppendToStreamAsync(stream, ExpectedVersion.Any,
-                    new List<EventData> { new EventData(guid, eventType, true, Encoding.ASCII.GetBytes(body), null) }).Wait();
-                return guid;
-            }
-        }
+        return null;
+    }
 
-        private static Guid? ReadLastEventId(string stream, ILinkerConnectionBuilder destination)
+    private static void ConfigureLogging()
+    {
+        var config = new LoggingConfiguration();
+        var consoleTarget = new ConsoleTarget("console")
         {
-            using (var conn = destination.Build())
-            {
-                conn.ConnectAsync().Wait();
-                var result = conn.ReadEventAsync(stream, StreamPosition.End, false).Result;
-                return result.Status == EventReadStatus.NoStream ? null : result.Event?.Event.EventId;
-            }
-        }
-
-        private static void ConfigureLogging()
-        {
-            var config = new LoggingConfiguration();
-            var consoleTarget = new ConsoleTarget("target1")
-            {
-                Layout = @"${date:format=HH\:mm\:ss} ${level} ${message} ${exception}"
-            };
-            config.AddTarget(consoleTarget);
-            config.AddRuleForAllLevels(consoleTarget); // all to console
-            LogManager.Configuration = config;
-        }
+            Layout = @"${date:format=HH\:mm\:ss} ${level} ${message} ${exception}"
+        };
+        config.AddTarget(consoleTarget);
+        config.AddRuleForAllLevels(consoleTarget);
+        LogManager.Configuration = config;
     }
 }

@@ -1,40 +1,42 @@
 ﻿using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using System.Collections.Concurrent;
-using System.Text;
 using System.Text.Json.Nodes;
 using System.Timers;
 
 namespace Linker;
 
-public class LinkerService : ILinkerService
+public class LinkerService : ILinkerService, IAsyncDisposable
 {
     private readonly ILinkerLogger _logger;
     private readonly IPositionRepository _positionRepository;
     private readonly IFilterService _filterService;
     private readonly bool _handleConflicts;
     private Position _lastPosition;
-    //private EventStoreAllCatchUpSubscription _allCatchUpSubscription;
     public string Name { get; }
-    private readonly ILinkerConnectionBuilder _connectionBuilderForOrigin;
-    private readonly ILinkerConnectionBuilder _connectionBuilderForDestination;
-    private KurrentDBClient _destinationConnection;
-    private KurrentDBClient _originConnection;
-    private bool _started;
-    private int _totalProcessedMessagesCurrent;
-    private int _totalProcessedMessagesPerSecondsPrevious;
-    private int _processedMessagesPerSeconds;
-    private readonly System.Timers.Timer _timerForStats;
-    private readonly LinkerHelper _replicaHelper;
-    private PerfTuneSettings _perfTunedSettings;
-    private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new ConcurrentQueue<BufferedEvent>();
-    private readonly System.Timers.Timer _processor;
-    private readonly bool _resolveLinkTos;
-    private Task? _backgroundSubscriptionTask;
-    private readonly CancellationTokenSource _cts = new();
 
-    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IPositionRepository positionRepository, IFilterService filterService, Settings settings, ILinkerLogger logger)
+    private readonly ILinkerConnectionBuilder _originConnectionBuilder;
+    private readonly ILinkerConnectionBuilder _destinationConnectionBuilder;
+    private KurrentDBClient _originConnection;
+    private KurrentDBClient _destinationConnection;
+
+    private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new();
+    private readonly System.Timers.Timer _timerForStats;
+    private readonly System.Timers.Timer _processorTimer;
+
+    private readonly LinkerHelper _replicaHelper;
+    private PerfTuneSettings _perfTuneSettings;
+    private readonly CancellationTokenSource _cts = new();
+    private Task? _subscriptionTask;
+    private bool _started;
+
+    public LinkerService(
+        ILinkerConnectionBuilder originBuilder,
+        ILinkerConnectionBuilder destinationBuilder,
+        IPositionRepository positionRepository,
+        IFilterService filterService,
+        Settings settings,
+        ILinkerLogger logger)
     {
         Ensure.NotNull(originBuilder, nameof(originBuilder));
         Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
@@ -42,62 +44,71 @@ public class LinkerService : ILinkerService
 
         _logger = logger;
         Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
-        _connectionBuilderForOrigin = originBuilder;
-        _connectionBuilderForDestination = destinationBuilder;
+
+        _originConnectionBuilder = originBuilder;
+        _destinationConnectionBuilder = destinationBuilder;
+
         _positionRepository = positionRepository;
         _filterService = filterService;
         _handleConflicts = settings.HandleConflicts;
-        _resolveLinkTos = settings.ResolveLinkTos;
+
+        _perfTuneSettings = new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
+        _replicaHelper = new LinkerHelper();
 
         _timerForStats = new System.Timers.Timer(settings.StatsInterval);
-        _timerForStats.Elapsed += _timerForStats_Elapsed;
+        _timerForStats.Elapsed += TimerForStats_Elapsed;
 
-        _processor = new System.Timers.Timer(settings.SynchronisationInterval);
-        _processor.Elapsed += Processor_Elapsed;
-        _perfTunedSettings =
-            new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
-        _replicaHelper = new LinkerHelper();
+        _processorTimer = new System.Timers.Timer(settings.SynchronisationInterval);
+        _processorTimer.Elapsed += ProcessorTimer_Elapsed;
     }
-
-    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IFilterService filterService, Settings settings, ILinkerLogger logger) : this(
-        originBuilder, destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
-            "PositionUpdated", destinationBuilder.Build()), filterService, settings, logger)
-    { }
-
-    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IPositionRepository positionRepository, IFilterService filterService, Settings settings) : this(
-        originBuilder, destinationBuilder, positionRepository, filterService, settings,
-        new SimpleConsoleLogger(nameof(LinkerService))) { }
-
-    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IFilterService filterService, Settings settings) : this(originBuilder,destinationBuilder, new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}",
-        "PositionUpdated", destinationBuilder.Build()), filterService, settings, new SimpleConsoleLogger(nameof(LinkerService))) { }
 
     public async Task<bool> Start()
     {
-        await _destinationConnection.DisposeAsync();
-        _destinationConnection = _connectionBuilderForDestination.Build();
-        _logger.Info($@"{_connectionBuilderForDestination.ConnectionName} gRPC connected");
+        await Stop(); // Ensure clean startup
 
-        await _originConnection.DisposeAsync();
-        _originConnection = _connectionBuilderForOrigin.Build();
-        _backgroundSubscriptionTask = Task.Run(async () =>
-        {
-            try
-            {
-                _started = true; //DateTime.UtcNow;
-                await SubscribeMeGrpc(_cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.Info("gRPC startup cancelled");
-            }
-        }, _cts.Token);
-        _logger.Info($@"{_connectionBuilderForOrigin.ConnectionName} gRPC background subscription started");
+        _destinationConnection = _destinationConnectionBuilder.Build();
+        _originConnection = _originConnectionBuilder.Build();
 
-        _logger.Info($"{Name} started");
+        _started = true;
+
+        _subscriptionTask = SubscribeMeGrpc(_cts.Token);
+
+        _timerForStats.Start();
+        _processorTimer.Start();
+
+        _logger.Info($"{Name} started.");
+
         return true;
+    }
+
+    public async Task<bool> Stop()
+    {
+        if (!_started) return true;
+
+        _cts.Cancel();
+
+        _timerForStats.Stop();
+        _processorTimer.Stop();
+
+        if (_subscriptionTask != null)
+        {
+            try { await _subscriptionTask; }
+            catch (OperationCanceledException) { /* expected */ }
+        }
+
+        await DisposeConnectionsAsync();
+
+        _started = false;
+        _logger.Info($"{Name} stopped.");
+        return true;
+    }
+
+    private async Task DisposeConnectionsAsync()
+    {
+        if (_originConnection != null)
+            await _originConnection.DisposeAsync();
+        if (_destinationConnection != null)
+            await _destinationConnection.DisposeAsync();
     }
 
     private async Task SubscribeMeGrpc(CancellationToken ctsToken)
@@ -110,201 +121,145 @@ public class LinkerService : ILinkerService
             {
                 case StreamMessage.Event(var evnt):
                     _logger.Debug($"Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
-                    await EventAppeared(evnt);
+                    await HandleEventAsync(evnt);
                     break;
             }
         }
     }
 
-    public async Task<bool> Stop()
+    private async Task HandleEventAsync(ResolvedEvent evt)
     {
-        await _destinationConnection.DisposeAsync();
-        await _originConnection.DisposeAsync();
-
-        _processor.Stop();
-        //_positionRepository.Stop();
-        _timerForStats.Stop();
-        _totalProcessedMessagesCurrent = 0;
-        _started = false;
-        _logger.Info($"{Name} stopped");
-        return true; // Task.FromResult(true);
-    }
-
-    private void Processor_Elapsed(object sender, ElapsedEventArgs e)
-    {
-        if (_internalBuffer.IsEmpty)
+        if (evt.Event == null || !evt.OriginalPosition.HasValue)
             return;
-        try
-        {
-            _processor.Stop();
-            //_allCatchUpSubscription.Stop();
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            var eventsToProcess = _internalBuffer.Count;
-            var oldPerfSettings = _perfTunedSettings.Clone() as PerfTuneSettings;
-            ProcessQueueAndWaitAll();
-            watch.Stop();
-            var elapsedMs = watch.ElapsedMilliseconds;
-            _logger.Debug($"{Name} Replicated '{eventsToProcess}' events in {elapsedMs}ms");
-            _perfTunedSettings = _replicaHelper.OptimizeSettings(elapsedMs, _perfTunedSettings);
-            if (!_perfTunedSettings.Equals(oldPerfSettings))
-            {
-                _logger.Debug($"{Name} Old PerfSettings: {oldPerfSettings}");
-                _logger.Debug($"{Name} New PerfSettings: {_perfTunedSettings}");
-            }
-            SubscribeMeGrpc(new CancellationToken()); // TODO how do we await this?
-            _processor.Start();
-        }
-        catch (Exception exception)
-        {
-            _logger.Error($"Error while Processor_Elapsed: {exception.GetBaseException().Message}");
-            Stop();
-            Start();
-        }
-    }
 
-    private void _timerForStats_Elapsed(object sender, ElapsedEventArgs e)
-    {
-        var current = _totalProcessedMessagesCurrent;
-        _processedMessagesPerSeconds = _replicaHelper.CalculateSpeed(current, _totalProcessedMessagesPerSecondsPrevious);
-        _totalProcessedMessagesPerSecondsPrevious = current;
-    }
+        var bufferedEvent = new BufferedEvent(
+            evt.Event.EventStreamId,
+            evt.Event.EventNumber,
+            evt.OriginalPosition.Value,
+            new EventData(evt.Event.EventId, evt.Event.EventType, evt.Event.Data, evt.Event.Metadata),
+            evt.Event.Created);
 
-    public IDictionary<string, dynamic> GetStats()
-    {
-        return new Dictionary<string, dynamic>
+        if (!_replicaHelper.IsValidForReplica(bufferedEvent.EventData.Type, bufferedEvent.StreamId,
+                bufferedEvent.OriginalPosition, _positionRepository.PositionEventType, _filterService))
         {
-            {"serviceType", "crossReplica"},
-            {"from", _connectionBuilderForOrigin.ConnectionName },
-            {"to", _connectionBuilderForDestination.ConnectionName },
-            {"isRunning", _started},
-            {"lastPosition", _lastPosition},
-            {"messagesPerSeconds", _processedMessagesPerSeconds}
-        };
-    }
-
-    private Task EventAppeared(ResolvedEvent resolvedEvent)
-    {
-        try
-        {
-            if (resolvedEvent.Event == null || !resolvedEvent.OriginalPosition.HasValue)
-                return Task.CompletedTask;
-            return EventAppeared(new BufferedEvent(resolvedEvent.Event.EventStreamId,
-                resolvedEvent.Event.EventNumber, resolvedEvent.OriginalPosition.Value,
-                new EventData(resolvedEvent.Event.EventId, resolvedEvent.Event.EventType, resolvedEvent.Event.Data, resolvedEvent.Event.Metadata),
-                resolvedEvent.Event.Created));
-        }
-        catch (Exception e)
-        {
-            _logger.Error($"Error during Cross Replica {e.GetBaseException().Message}");
+            _lastPosition = bufferedEvent.OriginalPosition;
+            return;
         }
 
-        return Task.CompletedTask;
-    }
-
-    private Task EventAppeared(BufferedEvent resolvedEvent)
-    {
-        if (!_replicaHelper.IsValidForReplica(resolvedEvent.EventData.Type, resolvedEvent.StreamId,
-                resolvedEvent.OriginalPosition, _positionRepository.PositionEventType, _filterService))
+        if (!_replicaHelper.TryProcessMetadata(bufferedEvent.StreamId, bufferedEvent.EventNumber, bufferedEvent.Created,
+            _originConnectionBuilder.ConnectionName,
+            _replicaHelper.DeserializeObject(bufferedEvent.EventData.Metadata) ?? new Dictionary<string, JsonNode?>(),
+            out var enrichedMetadata))
         {
-            _lastPosition = resolvedEvent.OriginalPosition;
-            return Task.CompletedTask;
-        }
-
-        var origin = _connectionBuilderForOrigin.ConnectionName;
-        if (!_replicaHelper.TryProcessMetadata(resolvedEvent.StreamId, resolvedEvent.EventNumber,
-                resolvedEvent.Created, origin,
-                _replicaHelper.DeserializeObject(resolvedEvent.EventData.Metadata) ?? new Dictionary<string, JsonNode?>(),
-                out IDictionary<string, JsonNode> enrichedMetadata))
-        {
-            _lastPosition = resolvedEvent.OriginalPosition;
+            _lastPosition = bufferedEvent.OriginalPosition;
             _positionRepository.Set(_lastPosition);
-            return Task.CompletedTask;
+            return;
         }
 
-        // Back-pressure
-        // TODO implement back-pressure using the new kurrentdb client
-        //if (_internalBuffer.Count >= _perfTunedSettings.MaxBufferSize)
-        //    _allCatchUpSubscription?.Stop();
-
-        _internalBuffer.Enqueue(new BufferedEvent(resolvedEvent.StreamId, resolvedEvent.EventNumber,
-            resolvedEvent.OriginalPosition, new EventData(resolvedEvent.EventData.EventId,
-                resolvedEvent.EventData.Type, resolvedEvent.EventData.Data,
-                _replicaHelper.SerializeObject(enrichedMetadata)), resolvedEvent.Created));
-
-        return Task.CompletedTask;
+        // Implement proper back-pressure logic here if needed
+        _internalBuffer.Enqueue(new BufferedEvent(bufferedEvent.StreamId, bufferedEvent.EventNumber, bufferedEvent.OriginalPosition,
+            new EventData(bufferedEvent.EventData.EventId, bufferedEvent.EventData.Type,
+                bufferedEvent.EventData.Data, _replicaHelper.SerializeObject(enrichedMetadata)), bufferedEvent.Created));
     }
 
-    private void ProcessQueueAndWaitAll()
+    private async void ProcessorTimer_Elapsed(object sender, ElapsedEventArgs e)
+    {
+        _processorTimer.Stop();
+        try
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await ProcessBufferedEventsAsync();
+            watch.Stop();
+
+            _logger.Debug($"Processed {_internalBuffer.Count} events in {watch.ElapsedMilliseconds}ms");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Processing error: {ex.GetBaseException().Message}");
+            await RestartServiceAsync();
+        }
+        finally
+        {
+            _processorTimer.Start();
+        }
+    }
+
+    private async Task ProcessBufferedEventsAsync()
     {
         var tasks = new List<Task>();
+
+        while (_internalBuffer.TryDequeue(out var evt))
+        {
+            tasks.Add(AppendEventAsync(evt));
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task AppendEventAsync(BufferedEvent evt)
+    {
         try
         {
-            BufferedEvent ev;
-            while (_internalBuffer.TryDequeue(out ev))
-            {
-                var ev1 = ev;
-                tasks.Add(_destinationConnection
-                    .AppendToStreamAsync(ev.StreamId, ev.EventNumber.ToUInt64() - 1, new[] { ev.EventData }).ContinueWith(a =>
-                    {
-                        if (a.Exception?.InnerException is WrongExpectedVersionException)
-                        {
-                            if (!TryHandleConflicts(ev1.EventData.EventId.ToGuid(), ev1.EventData.Type, ev1.StreamId,
-                                    ev1.EventData.Data.ToArray(),
-                                    (WrongExpectedVersionException)a.Exception.InnerException,
-                                    _replicaHelper.DeserializeObject(ev1.EventData.Metadata)))
-                            {
-                                _logger.Warn($"Error while handling conflicts: {a.Exception.InnerException.Message}");
-                            }
-                        }
-                    }, TaskContinuationOptions.OnlyOnFaulted).ContinueWith(a =>
-                    {
-                        _lastPosition = ev1.OriginalPosition;
-                        _positionRepository.Set(_lastPosition);
-                    }, TaskContinuationOptions.NotOnFaulted));
-            }
-            Task.WaitAll(tasks.ToArray());
+            await _destinationConnection.AppendToStreamAsync(evt.StreamId, evt.EventNumber.ToUInt64() - 1, new[] { evt.EventData });
+            _lastPosition = evt.OriginalPosition;
+            _positionRepository.Set(_lastPosition);
         }
-        catch (AggregateException ae)
+        catch (WrongExpectedVersionException ex)
         {
-            foreach (var aeInnerException in ae.InnerExceptions)
-            {
-                _logger.Error(
-                    $"Error while processing georeplica queue: {aeInnerException.GetBaseException().Message}");
-            }
+            if (!_handleConflicts || !await HandleConflictAsync(evt, ex))
+                _logger.Warn($"Conflict handling failed: {ex.Message}");
         }
     }
 
-    private bool TryHandleConflicts(Guid eventId, string eventType, string eventStreamId, byte[] data,
-        WrongExpectedVersionException exception, IDictionary<string, JsonNode> enrichedMetadata)
+    private async Task<bool> HandleConflictAsync(BufferedEvent evt, WrongExpectedVersionException ex)
     {
-        if (exception == null)
-            return false;
+        var conflictStreamId = _handleConflicts
+            ? $"$conflicts-from-{_originConnectionBuilder.ConnectionName}-to-{_destinationConnectionBuilder.ConnectionName}"
+            : evt.StreamId;
+
+        var metadata = _replicaHelper.DeserializeObject(evt.EventData.Metadata);
+        metadata["$error"] = ex.GetBaseException().Message;
 
         try
         {
-            enrichedMetadata.Add("$error", exception.GetBaseException().Message);
-            if (_handleConflicts)
+            await _destinationConnection.AppendToStreamAsync(conflictStreamId, StreamState.Any, new[]
             {
-                var conflictStreamId = $"$conflicts-from-{_connectionBuilderForOrigin.ConnectionName}-to-{_connectionBuilderForDestination.ConnectionName}";
-                _destinationConnection.AppendToStreamAsync(conflictStreamId, StreamState.Any, new[]
-                {
-                    new EventData(Uuid.FromGuid(eventId), eventType, data, _replicaHelper.SerializeObject(enrichedMetadata))
-                }).Wait();
-            }
-            else
-            {
-                _destinationConnection.AppendToStreamAsync(eventStreamId, StreamState.Any, new[]
-                {
-                    new EventData(Uuid.FromGuid(eventId), eventType, data, _replicaHelper.SerializeObject(enrichedMetadata))
-                }).Wait();
-            }
-
+                new EventData(evt.EventData.EventId, evt.EventData.Type, evt.EventData.Data,
+                    _replicaHelper.SerializeObject(metadata))
+            });
             return true;
         }
-        catch (Exception e)
+        catch (Exception innerEx)
         {
-            _logger.Error($"Error while TryHandleConflicts {e.GetBaseException().Message}");
+            _logger.Error($"Conflict append failed: {innerEx.Message}");
             return false;
         }
+    }
+
+    private void TimerForStats_Elapsed(object sender, ElapsedEventArgs e)
+    {
+        // Implement your stats logic here
+    }
+
+    private async Task RestartServiceAsync()
+    {
+        await Stop();
+        await Start();
+    }
+
+    public IDictionary<string, dynamic> GetStats() => new Dictionary<string, dynamic>
+    {
+        ["serviceType"] = "crossReplica",
+        ["from"] = _originConnectionBuilder.ConnectionName,
+        ["to"] = _destinationConnectionBuilder.ConnectionName,
+        ["isRunning"] = _started,
+        ["lastPosition"] = _lastPosition
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        await Stop();
+        _timerForStats.Dispose();
+        _processorTimer.Dispose();
     }
 }

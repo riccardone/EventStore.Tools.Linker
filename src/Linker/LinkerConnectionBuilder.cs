@@ -4,16 +4,13 @@ namespace Linker;
 
 public class LinkerConnectionBuilder : ILinkerConnectionBuilder
 {
-    public Uri ConnectionString { get; }
     public string ConnectionName { get; }
-    public KurrentDBClientSettings ConnectionSettings { get; }
+    private KurrentDBClientSettings ConnectionSettings { get; }
 
     public KurrentDBClient Build()
     {
-        var connSettings = KurrentDBClientSettings.Create(ConnectionString.ToString());
-        connSettings.ConnectionName = ConnectionName;
-        connSettings.DefaultDeadline = TimeSpan.FromSeconds(30);
-        connSettings.CreateHttpMessageHandler = () =>
+        ConnectionSettings.DefaultDeadline = TimeSpan.FromSeconds(30);
+        ConnectionSettings.CreateHttpMessageHandler = () =>
         {
             var handler = new HttpClientHandler();
 #if !DEBUG
@@ -22,12 +19,11 @@ public class LinkerConnectionBuilder : ILinkerConnectionBuilder
 #endif
             return handler;
         };
-        return new KurrentDBClient(connSettings);
+        return new KurrentDBClient(ConnectionSettings);
     }
 
-    public LinkerConnectionBuilder(Uri connectionString, KurrentDBClientSettings connectionSettings, string connectionName)
+    public LinkerConnectionBuilder(KurrentDBClientSettings connectionSettings, string connectionName)
     {
-        ConnectionString = connectionString;
         ConnectionSettings = connectionSettings;
         ConnectionName = connectionName;
     }
