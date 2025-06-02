@@ -65,7 +65,7 @@ public class LinkerHelper
         return true;
     }
 
-    public bool TryProcessMetadata(string streamId, long eventNumber, DateTime created, string origin, IDictionary<string, dynamic> inputMetadata, out IDictionary<string, dynamic> outputMetadata)
+    public bool TryProcessMetadata(string streamId, StreamPosition eventNumber, DateTime created, string origin, IDictionary<string, JsonNode?> inputMetadata, out IDictionary<string, JsonNode> outputMetadata)
     {
         outputMetadata = null;
 
@@ -75,16 +75,16 @@ public class LinkerHelper
         // We don't want to replicate an event back to any of its origins
         if (inputMetadata.ContainsKey("$origin"))
         {
-            string[] origins = inputMetadata["$origin"].Split(',');
+            string[] origins = inputMetadata["$origin"].ToString().Split(',');
             if (origins.Any(o => o.Equals(origin)))
                 return false;
         }
 
-        outputMetadata = EnrichMetadata(streamId, eventNumber, created, inputMetadata, origin);
+        outputMetadata = EnrichMetadata(streamId, eventNumber.ToInt64(), created, inputMetadata, origin);
         return true;
     }
 
-    private IDictionary<string, dynamic> EnrichMetadata(string streamId, long eventNumber, DateTime created, IDictionary<string, dynamic> metadata, string origin)
+    private IDictionary<string, JsonNode> EnrichMetadata(string streamId, long eventNumber, DateTime created, IDictionary<string, JsonNode> metadata, string origin)
     {
         if (metadata.ContainsKey("$origin"))
             // This node is part of a replica chain and therefore we don't want to forget the previous origins
@@ -113,9 +113,9 @@ public class LinkerHelper
         return currentCountPerSec - previousCountPerSec;
     }
 
-    public IDictionary<string, JsonNode?> DeserializeObject(byte[] obj)
+    public IDictionary<string, JsonNode?> DeserializeObject(ReadOnlyMemory<byte> obj)
     {
-        var json = Encoding.UTF8.GetString(obj);
+        var json = Encoding.UTF8.GetString(obj.ToArray());
         var jsonObject = JsonNode.Parse(json)?.AsObject();
 
         return jsonObject is not null

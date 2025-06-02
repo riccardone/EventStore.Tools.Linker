@@ -2,6 +2,7 @@
 using KurrentDB.Client;
 using System.Collections.Concurrent;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Timers;
 
 namespace Linker;
@@ -129,7 +130,7 @@ public class LinkerService : ILinkerService
         return true; // Task.FromResult(true);
     }
 
-    private async Task Processor_Elapsed(object sender, ElapsedEventArgs e)
+    private void Processor_Elapsed(object sender, ElapsedEventArgs e)
     {
         if (_internalBuffer.IsEmpty)
             return;
@@ -150,7 +151,7 @@ public class LinkerService : ILinkerService
                 _logger.Debug($"{Name} Old PerfSettings: {oldPerfSettings}");
                 _logger.Debug($"{Name} New PerfSettings: {_perfTunedSettings}");
             }
-            await SubscribeMeGrpc(new CancellationToken());
+            SubscribeMeGrpc(new CancellationToken()); // TODO how do we await this?
             _processor.Start();
         }
         catch (Exception exception)
@@ -189,8 +190,7 @@ public class LinkerService : ILinkerService
                 return Task.CompletedTask;
             return EventAppeared(new BufferedEvent(resolvedEvent.Event.EventStreamId,
                 resolvedEvent.Event.EventNumber, resolvedEvent.OriginalPosition.Value,
-                new EventData(resolvedEvent.Event.EventId, resolvedEvent.Event.EventType,
-                    resolvedEvent.Event.IsJson, resolvedEvent.Event.Data, resolvedEvent.Event.Metadata),
+                new EventData(resolvedEvent.Event.EventId, resolvedEvent.Event.EventType, resolvedEvent.Event.Data, resolvedEvent.Event.Metadata),
                 resolvedEvent.Event.Created));
         }
         catch (Exception e)
@@ -210,12 +210,11 @@ public class LinkerService : ILinkerService
             return Task.CompletedTask;
         }
 
-        IDictionary<string, dynamic> enrichedMetadata;
         var origin = _connectionBuilderForOrigin.ConnectionName;
         if (!_replicaHelper.TryProcessMetadata(resolvedEvent.StreamId, resolvedEvent.EventNumber,
                 resolvedEvent.Created, origin,
-                _replicaHelper.DeserializeObject(resolvedEvent.EventData.Metadata) ?? new Dictionary<string, dynamic>(),
-                out enrichedMetadata))
+                _replicaHelper.DeserializeObject(resolvedEvent.EventData.Metadata) ?? new Dictionary<string, JsonNode?>(),
+                out IDictionary<string, JsonNode> enrichedMetadata))
         {
             _lastPosition = resolvedEvent.OriginalPosition;
             _positionRepository.Set(_lastPosition);
@@ -223,13 +222,13 @@ public class LinkerService : ILinkerService
         }
 
         // Back-pressure
-        if (_internalBuffer.Count >= _perfTunedSettings.MaxBufferSize)
-            _allCatchUpSubscription?.Stop();
+        // TODO implement back-pressure using the new kurrentdb client
+        //if (_internalBuffer.Count >= _perfTunedSettings.MaxBufferSize)
+        //    _allCatchUpSubscription?.Stop();
 
         _internalBuffer.Enqueue(new BufferedEvent(resolvedEvent.StreamId, resolvedEvent.EventNumber,
             resolvedEvent.OriginalPosition, new EventData(resolvedEvent.EventData.EventId,
-                resolvedEvent.EventData.Type,
-                resolvedEvent.EventData.IsJson, resolvedEvent.EventData.Data,
+                resolvedEvent.EventData.Type, resolvedEvent.EventData.Data,
                 _replicaHelper.SerializeObject(enrichedMetadata)), resolvedEvent.Created));
 
         return Task.CompletedTask;
@@ -245,12 +244,12 @@ public class LinkerService : ILinkerService
             {
                 var ev1 = ev;
                 tasks.Add(_destinationConnection
-                    .AppendToStreamAsync(ev.StreamId, ev.EventNumber - 1, new[] { ev.EventData }).ContinueWith(a =>
+                    .AppendToStreamAsync(ev.StreamId, ev.EventNumber.ToUInt64() - 1, new[] { ev.EventData }).ContinueWith(a =>
                     {
                         if (a.Exception?.InnerException is WrongExpectedVersionException)
                         {
-                            if (!TryHandleConflicts(ev1.EventData.EventId, ev1.EventData.Type, ev1.EventData.IsJson,
-                                    ev1.StreamId, ev1.EventData.Data,
+                            if (!TryHandleConflicts(ev1.EventData.EventId.ToGuid(), ev1.EventData.Type, ev1.StreamId,
+                                    ev1.EventData.Data.ToArray(),
                                     (WrongExpectedVersionException)a.Exception.InnerException,
                                     _replicaHelper.DeserializeObject(ev1.EventData.Metadata)))
                             {
@@ -275,8 +274,8 @@ public class LinkerService : ILinkerService
         }
     }
 
-    private bool TryHandleConflicts(Guid eventId, string eventType, bool isJson, string eventStreamId, byte[] data,
-        WrongExpectedVersionException exception, IDictionary<string, dynamic> enrichedMetadata)
+    private bool TryHandleConflicts(Guid eventId, string eventType, string eventStreamId, byte[] data,
+        WrongExpectedVersionException exception, IDictionary<string, JsonNode> enrichedMetadata)
     {
         if (exception == null)
             return false;
@@ -287,16 +286,16 @@ public class LinkerService : ILinkerService
             if (_handleConflicts)
             {
                 var conflictStreamId = $"$conflicts-from-{_connectionBuilderForOrigin.ConnectionName}-to-{_connectionBuilderForDestination.ConnectionName}";
-                _destinationConnection.AppendToStreamAsync(conflictStreamId, ExpectedVersion.Any, new[]
+                _destinationConnection.AppendToStreamAsync(conflictStreamId, StreamState.Any, new[]
                 {
-                    new EventData(eventId, eventType, isJson, data, _replicaHelper.SerializeObject(enrichedMetadata))
+                    new EventData(Uuid.FromGuid(eventId), eventType, data, _replicaHelper.SerializeObject(enrichedMetadata))
                 }).Wait();
             }
             else
             {
-                _destinationConnection.AppendToStreamAsync(eventStreamId, ExpectedVersion.Any, new[]
+                _destinationConnection.AppendToStreamAsync(eventStreamId, StreamState.Any, new[]
                 {
-                    new EventData(eventId, eventType, isJson, data, _replicaHelper.SerializeObject(enrichedMetadata))
+                    new EventData(Uuid.FromGuid(eventId), eventType, data, _replicaHelper.SerializeObject(enrichedMetadata))
                 }).Wait();
             }
 
