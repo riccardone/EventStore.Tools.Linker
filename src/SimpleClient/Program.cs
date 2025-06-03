@@ -38,26 +38,33 @@ static class Program
     {
         Logger.LogInformation("Starting Replica Service...");
 
-        var origin = new LinkerConnectionBuilder(
-            KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2113?tls=false"),
-            "origin-01");
+        try
+        {
+            var origin = new LinkerConnectionBuilder(
+                KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2114?tls=false"),
+                "origin-01");
 
-        var destination = new LinkerConnectionBuilder(
-            KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2123?tls=false"),
-            "destination-01");
+            var destination = new LinkerConnectionBuilder(
+                KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2115?tls=false"),
+                "destination-01");
 
-        var service = new LinkerService(
-            origin,
-            destination,
-            new PositionRepository("DestinationPosition", "DestinationPosition", destination.Build()),
-            GetFilterForSampleEvent(),
-            Settings.Default(),
-            LinkerLogger);
+            var service = new LinkerService(
+                origin,
+                destination,
+                new PositionRepository("DestinationPosition", "DestinationPosition", destination.Build()),
+                GetFilterForSampleEvent(),
+                Settings.Default(),
+                LinkerLogger);
 
-        await service.Start();
-        Logger.LogInformation("Replica Service started");
+            await service.Start();
+            Logger.LogInformation("Replica Service started");
 
-        await TestReplicaForSampleEvent(origin, destination, "domain-test-01", "UserReplicaTested");
+            await TestReplicaForSampleEvent(origin, destination, "domain-test-01", "UserReplicaTested");
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e.GetBaseException().Message);
+        }
 
         Logger.LogInformation("Press enter to exit the program");
         Console.ReadLine();

@@ -148,7 +148,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
         if (!_replicaHelper.TryProcessMetadata(bufferedEvent.StreamId, bufferedEvent.EventNumber, bufferedEvent.Created,
             _originConnectionBuilder.ConnectionName,
-            _replicaHelper.DeserializeObject(bufferedEvent.EventData.Metadata) ?? new Dictionary<string, JsonNode?>(),
+            _replicaHelper.DeserializeObject(bufferedEvent.EventData.Metadata),
             out var enrichedMetadata))
         {
             _lastPosition = bufferedEvent.OriginalPosition;

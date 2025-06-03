@@ -22,12 +22,12 @@ public class LinkerHelper
         var optimizedMaxBufferSize = currentPerfTuneSettings.MaxBufferSize;
         var optimizedMaxLiveQueue = currentPerfTuneSettings.MaxLiveQueue;
         var optimizedReadBatchSize = currentPerfTuneSettings.ReadBatchSize;
-            
+
         // Should we increase performances?
         //if (currentPerfTuneSettings.MaxBufferSize <= maxBufferSizeLimit && lastExecutionTime < geoReplicaClock)
         //    optimizedMaxBufferSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxBufferSize * differentialLimit,
         //        MidpointRounding.AwayFromZero));
-        
+
         //if (currentPerfTuneSettings.MaxLiveQueue <= CatchUpSubscriptionSettings.Default.MaxLiveQueueSize && lastExecutionTime < geoReplicaClock)
         //    optimizedMaxLiveQueue = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxLiveQueue * differentialLimit,
         //        MidpointRounding.AwayFromZero));
@@ -45,7 +45,7 @@ public class LinkerHelper
         //if (currentPerfTuneSettings.ReadBatchSize >= CatchUpSubscriptionSettings.Default.ReadBatchSize && lastExecutionTime > geoReplicaClock)
         //    optimizedReadBatchSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.ReadBatchSize / differentialLimit,
         //        MidpointRounding.AwayFromZero));
-            
+
         return new PerfTuneSettings(optimizedMaxBufferSize, optimizedMaxLiveQueue, optimizedReadBatchSize);
     }
 
@@ -115,7 +115,10 @@ public class LinkerHelper
 
     public IDictionary<string, JsonNode?> DeserializeObject(ReadOnlyMemory<byte> obj)
     {
-        var json = Encoding.UTF8.GetString(obj.ToArray());
+        if (obj.IsEmpty)
+            return new Dictionary<string, JsonNode?>();
+
+        var json = Encoding.UTF8.GetString(obj.Span);
         var jsonObject = JsonNode.Parse(json)?.AsObject();
 
         return jsonObject is not null
