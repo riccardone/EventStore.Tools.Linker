@@ -5,42 +5,72 @@ using System.Threading.Tasks;
 using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using Linker;
-using NLog;
-using NLog.Config;
-using NLog.Targets;
+using Microsoft.Extensions.Logging;
 
 namespace SimpleClient;
 
 static class Program
 {
-    private static readonly Logger Log = LogManager.GetCurrentClassLogger();
+    private static readonly Microsoft.Extensions.Logging.ILogger Logger;
+    private static readonly ILinkerLogger LinkerLogger;
+
+    static Program()
+    {
+        var loggerFactory = LoggerFactory.Create(logging =>
+        {
+            logging.ClearProviders();
+            logging.SetMinimumLevel(LogLevel.Information);
+            logging.AddSimpleConsole(options =>
+            {
+                options.SingleLine = true;
+                options.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff ";
+                options.IncludeScopes = false;
+            });
+            logging.AddFilter("Microsoft.*", Microsoft.Extensions.Logging.LogLevel.Error);
+            logging.AddFilter("System.Net.Http.*", Microsoft.Extensions.Logging.LogLevel.Error);
+        });
+
+        Logger = loggerFactory.CreateLogger("ReplicaLogger");
+        LinkerLogger = new SimpleLogger(Logger);
+    }
 
     static async Task Main(string[] args)
     {
-        ConfigureLogging();
+        Logger.LogInformation("Starting Replica Service...");
 
-        var origin = new LinkerConnectionBuilder(KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2113?tls=false"),  "origin-01");
-        var destination = new LinkerConnectionBuilder(KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2123?tls=false"), "destination-01");
+        var origin = new LinkerConnectionBuilder(
+            KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2113?tls=false"),
+            "origin-01");
+
+        var destination = new LinkerConnectionBuilder(
+            KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2123?tls=false"),
+            "destination-01");
 
         var service = new LinkerService(
             origin,
-            destination, new PositionRepository("DestinationPosition", "DestinationPosition", destination.Build()),
-            new FilterService(new List<Filter>
-            {
-                new Filter(FilterType.EventType, "User*", FilterOperation.Include),
-                new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
-                new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
-            }),
+            destination,
+            new PositionRepository("DestinationPosition", "DestinationPosition", destination.Build()),
+            GetFilterForSampleEvent(),
             Settings.Default(),
-            new NLogLogger());
+            LinkerLogger);
 
         await service.Start();
-        Log.Info("Replica Service started");
+        Logger.LogInformation("Replica Service started");
 
         await TestReplicaForSampleEvent(origin, destination, "domain-test-01", "UserReplicaTested");
 
-        Log.Info("Press enter to exit the program");
+        Logger.LogInformation("Press enter to exit the program");
         Console.ReadLine();
+    }
+
+    private static IFilterService GetFilterForSampleEvent()
+    {
+        return new FilterService(new List<Filter>
+        {
+            new Filter(FilterType.EventType, "User*", FilterOperation.Include),
+            new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
+            new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
+        });
     }
 
     private static async Task TestReplicaForSampleEvent(
@@ -50,19 +80,19 @@ static class Program
         string eventType)
     {
         var guidOnOrigin = await AppendEventAsync("{\"name\":\"for test...\"}", stream, eventType, senderBuilder);
-        Log.Info($"The ID saved on the origin database is {guidOnOrigin}");
+        Logger.LogInformation("The ID saved on the origin database is {Id}", guidOnOrigin);
 
         await Task.Delay(3000); // Give time for replication
 
         var guidOnDestination = await ReadLastEventIdAsync(stream, destinationBuilder);
         if (guidOnDestination == guidOnOrigin)
         {
-            Log.Info($"The last replicated ID on the destination database is {guidOnDestination}");
-            Log.Info("The test event has been replicated correctly!");
+            Logger.LogInformation("The last replicated ID on the destination database is {Id}", guidOnDestination);
+            Logger.LogInformation("The test event has been replicated correctly!");
         }
         else
         {
-            Log.Error("The test event has NOT been replicated correctly.");
+            Logger.LogError("The test event has NOT been replicated correctly.");
         }
     }
 
@@ -87,12 +117,9 @@ static class Program
         ILinkerConnectionBuilder destinationBuilder)
     {
         await using var conn = destinationBuilder.Build();
-
-        // Read from the stream starting from the end, but since KurrentDB reads forward,
-        // you'll need to fetch the last known count and subtract to read from near-end
         const int batchSize = 1;
 
-        var result = conn.ReadStreamAsync(Direction.Backwards,stream, batchSize);
+        var result = conn.ReadStreamAsync(Direction.Backwards, stream, batchSize);
 
         await foreach (var resolvedEvent in result)
         {
@@ -100,17 +127,5 @@ static class Program
         }
 
         return null;
-    }
-
-    private static void ConfigureLogging()
-    {
-        var config = new LoggingConfiguration();
-        var consoleTarget = new ConsoleTarget("console")
-        {
-            Layout = @"${date:format=HH\:mm\:ss} ${level} ${message} ${exception}"
-        };
-        config.AddTarget(consoleTarget);
-        config.AddRuleForAllLevels(consoleTarget);
-        LogManager.Configuration = config;
     }
 }

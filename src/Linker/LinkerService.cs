@@ -10,7 +10,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 {
     private readonly ILinkerLogger _logger;
     private readonly IPositionRepository _positionRepository;
-    private readonly IFilterService _filterService;
+    private readonly IFilterService? _filterService;
     private readonly bool _handleConflicts;
     private Position _lastPosition;
     public string Name { get; }
@@ -34,7 +34,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         ILinkerConnectionBuilder originBuilder,
         ILinkerConnectionBuilder destinationBuilder,
         IPositionRepository positionRepository,
-        IFilterService filterService,
+        IFilterService? filterService,
         Settings settings,
         ILinkerLogger logger)
     {
@@ -157,9 +157,10 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         }
 
         // Implement proper back-pressure logic here if needed
-        _internalBuffer.Enqueue(new BufferedEvent(bufferedEvent.StreamId, bufferedEvent.EventNumber, bufferedEvent.OriginalPosition,
-            new EventData(bufferedEvent.EventData.EventId, bufferedEvent.EventData.Type,
-                bufferedEvent.EventData.Data, _replicaHelper.SerializeObject(enrichedMetadata)), bufferedEvent.Created));
+        //_internalBuffer.Enqueue(new BufferedEvent(bufferedEvent.StreamId, bufferedEvent.EventNumber, bufferedEvent.OriginalPosition,
+        //    new EventData(bufferedEvent.EventData.EventId, bufferedEvent.EventData.Type,
+        //        bufferedEvent.EventData.Data, _replicaHelper.SerializeObject(enrichedMetadata)), bufferedEvent.Created));
+        _internalBuffer.Enqueue(bufferedEvent);
     }
 
     private async void ProcessorTimer_Elapsed(object sender, ElapsedEventArgs e)
