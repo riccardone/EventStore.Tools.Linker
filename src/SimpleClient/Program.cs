@@ -1,106 +1,113 @@
-﻿using System;
+﻿using KurrentDB.Client;
+using Linker;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using EventStore.PositionRepository.Gprc;
-using KurrentDB.Client;
-using Linker;
-using Microsoft.Extensions.Logging;
 
 namespace SimpleClient;
 
 static class Program
 {
-    private static readonly Microsoft.Extensions.Logging.ILogger Logger;
-    private static readonly ILinkerLogger LinkerLogger;
+    private static ILogger _logger;
+    private static ILoggerFactory _loggerFactory;
 
     static Program()
     {
-        var loggerFactory = LoggerFactory.Create(logging =>
-        {
-            logging.ClearProviders();
-            logging.SetMinimumLevel(LogLevel.Information);
-            logging.AddSimpleConsole(options =>
-            {
-                options.SingleLine = true;
-                options.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff ";
-                options.IncludeScopes = false;
-            });
-            logging.AddFilter("Microsoft.*", Microsoft.Extensions.Logging.LogLevel.Error);
-            logging.AddFilter("System.Net.Http.*", Microsoft.Extensions.Logging.LogLevel.Error);
-        });
-
-        Logger = loggerFactory.CreateLogger("ReplicaLogger");
-        LinkerLogger = new SimpleLogger(Logger);
+        ConfigureLogging();
     }
 
     static async Task Main(string[] args)
     {
-        Logger.LogInformation("Starting Replica Service...");
+        _logger = _loggerFactory.CreateLogger("ReplicaLogger");
+        _logger.LogInformation("Starting Replica Services...");
 
         try
         {
-            var origin = new LinkerConnectionBuilder(
-                KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2114?tls=false"),
-                "origin-01");
+            var config = BuildConfig();
+            var links = config.GetSection("links").Get<IEnumerable<Link>>();
+            var services = new List<LinkerService>();
+            ILinkerConnectionBuilder origin = default;
+            foreach (var link in links)
+            {
+                if (link.Filters == null || !link.Filters.Any())
+                {
+                    _logger.LogInformation("Setting 'include all' default filter");
+                    var defaultFilter = new Filter(FilterType.Stream, "*", FilterOperation.Include);
+                    link.Filters = new List<Filter> { defaultFilter };
+                }
+                var filters = link.Filters.Select(linkFilter => new Filter
+                {
+                    FilterOperation = linkFilter.FilterOperation,
+                    FilterType = linkFilter.FilterType,
+                    Value = linkFilter.Value
+                }).ToList();
+                var filterService = new FilterService(filters);
+                var o = new LinkerConnectionBuilder(KurrentDBClientSettings.Create(link.Origin.ConnectionString),
+                    link.Origin.ConnectionName);
+                var d = new LinkerConnectionBuilder(KurrentDBClientSettings.Create(link.Destination.ConnectionString),
+                    link.Destination.ConnectionName);
+                origin ??= o;
+                var service = new LinkerService(o,d, filterService, Settings.Default(), _loggerFactory);
+                services.Add(service);
+            }
+            _logger.LogInformation($"Found {services.Count} services to start");
+            await StartServices(services);
 
-            var destination = new LinkerConnectionBuilder(
-                KurrentDBClientSettings.Create("esdb://admin:changeit@localhost:2115?tls=false"),
-                "destination-01");
-
-            var service = new LinkerService(
-                origin,
-                destination,
-                new PositionRepository("DestinationPosition", "DestinationPosition", destination.Build()),
-                GetFilterForSampleEvent(),
-                Settings.Default(),
-                LinkerLogger);
-
-            await service.Start();
-            Logger.LogInformation("Replica Service started");
-
-            await TestReplicaForSampleEvent(origin, destination, "domain-test-01", "UserReplicaTested");
+            // For testing replicating single events press W
+            while (true)
+            {
+                var key = Console.ReadKey();
+                if (key.Key == ConsoleKey.W)
+                {
+                    _logger.LogInformation("Write the stream name");
+                    var stream = Console.ReadLine();
+                    _logger.LogInformation("Write the event Type");
+                    var eventType = Console.ReadLine();
+                    await AppendTestEvent(stream, eventType, origin);
+                }
+            }
         }
         catch (Exception e)
         {
-            Logger.LogError(e.GetBaseException().Message);
+            _logger.LogError(e.GetBaseException().Message);
         }
 
-        Logger.LogInformation("Press enter to exit the program");
+        _logger.LogInformation("Press enter to exit the program");
         Console.ReadLine();
     }
 
-    private static IFilterService GetFilterForSampleEvent()
+    private static async Task StartServices(IEnumerable<LinkerService> services)
     {
-        return new FilterService(new List<Filter>
+        foreach (var linkerService in services)
         {
-            new Filter(FilterType.EventType, "User*", FilterOperation.Include),
-            new Filter(FilterType.Stream, "domain-*", FilterOperation.Include),
-            new Filter(FilterType.EventType, "Basket*", FilterOperation.Exclude)
-        });
+            _logger.LogInformation($"Starting {linkerService.Name}");
+            await linkerService.Start();
+        }
     }
 
-    private static async Task TestReplicaForSampleEvent(
-        ILinkerConnectionBuilder senderBuilder,
-        ILinkerConnectionBuilder destinationBuilder,
-        string stream,
-        string eventType)
+    private static async Task AppendTestEvent(string stream, string eventType, ILinkerConnectionBuilder senderBuilder)
     {
-        var guidOnOrigin = await AppendEventAsync("{\"name\":\"for test...\"}", stream, eventType, senderBuilder);
-        Logger.LogInformation("The ID saved on the origin database is {Id}", guidOnOrigin);
+        await AppendEventAsync("{\"name\":\"for test...\"}", stream, eventType, senderBuilder);
+    }
 
-        await Task.Delay(3000); // Give time for replication
+    private static async Task<Guid> AppendEventAsync(
+        string jsonBody,
+        string stream,
+        string eventType,
+        ILinkerConnectionBuilder senderBuilder, Guid id)
+    {
+        await using var conn = senderBuilder.Build();
 
-        var guidOnDestination = await ReadLastEventIdAsync(stream, destinationBuilder);
-        if (guidOnDestination == guidOnOrigin)
-        {
-            Logger.LogInformation("The last replicated ID on the destination database is {Id}", guidOnDestination);
-            Logger.LogInformation("The test event has been replicated correctly!");
-        }
-        else
-        {
-            Logger.LogError("The test event has NOT been replicated correctly.");
-        }
+        var data = Encoding.UTF8.GetBytes(jsonBody);
+        var evt = new EventData(Uuid.FromGuid(id), eventType, data);
+
+        await conn.AppendToStreamAsync(stream, StreamState.Any, new[] { evt });
+        return id;
     }
 
     private static async Task<Guid> AppendEventAsync(
@@ -109,30 +116,35 @@ static class Program
         string eventType,
         ILinkerConnectionBuilder senderBuilder)
     {
-        await using var conn = senderBuilder.Build();
-        var guid = Guid.NewGuid();
-
-        var data = Encoding.UTF8.GetBytes(jsonBody);
-        var evt = new EventData(Uuid.FromGuid(guid), eventType, data);
-
-        await conn.AppendToStreamAsync(stream, StreamState.Any, new[] { evt });
-        return guid;
+        return await AppendEventAsync(jsonBody, stream, eventType, senderBuilder, Guid.NewGuid());
     }
 
-    private static async Task<Guid?> ReadLastEventIdAsync(
-        string stream,
-        ILinkerConnectionBuilder destinationBuilder)
+    private static IConfigurationRoot BuildConfig()
     {
-        await using var conn = destinationBuilder.Build();
-        const int batchSize = 1;
+        var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        var builder = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+            .AddJsonFile($"appsettings.{env}.json", optional: true, reloadOnChange: false)
+            .AddEnvironmentVariables();
+        return builder.Build();
+    }
 
-        var result = conn.ReadStreamAsync(Direction.Backwards, stream, batchSize);
-
-        await foreach (var resolvedEvent in result)
+    private static void ConfigureLogging()
+    {
+        _loggerFactory = LoggerFactory.Create(logging =>
         {
-            return resolvedEvent.Event.EventId.ToGuid();
-        }
-
-        return null;
+            logging.ClearProviders();
+            logging.SetMinimumLevel(LogLevel.Information);
+            logging.AddFilter((category, level) => level >= LogLevel.Information);
+            logging.AddSimpleConsole(options =>
+            {
+                options.SingleLine = true;
+                options.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff ";
+                options.IncludeScopes = false;
+            });
+            logging.AddFilter("Microsoft", LogLevel.Error);
+            logging.AddFilter("System.Net.Http", LogLevel.Error);
+        });
     }
 }

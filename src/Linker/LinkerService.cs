@@ -1,8 +1,8 @@
 ﻿using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using System.Collections.Concurrent;
-using System.Text.Json.Nodes;
 using System.Timers;
+using Microsoft.Extensions.Logging;
 
 namespace Linker;
 
@@ -29,6 +29,14 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private Task? _subscriptionTask;
     private bool _started;
+
+    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
+        IFilterService? filterService, Settings settings, ILoggerFactory loggerFactory) : this(originBuilder,
+        destinationBuilder,
+        new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}", "PositionUpdated",
+            destinationBuilder.Build()), filterService, settings, new Logger(nameof(LinkerService), loggerFactory))
+    {
+    }
 
     public LinkerService(
         ILinkerConnectionBuilder originBuilder,
@@ -120,7 +128,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             switch (message)
             {
                 case StreamMessage.Event(var evnt):
-                    _logger.Debug($"Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
+                    _logger.Debug($"{Name} Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
                     await HandleEventAsync(evnt);
                     break;
             }

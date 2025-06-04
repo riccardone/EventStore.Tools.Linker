@@ -4,9 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Linker
+namespace Linker;
+
+public class LinkerCatchUpSubscription
 {
-    public class LinkerCatchUpSubscription
-    {
-    }
 }
