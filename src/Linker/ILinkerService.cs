@@ -1,12 +1,9 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
+﻿namespace Linker;
 
-namespace Linker
+public interface ILinkerService
 {
-    public interface ILinkerService
-    {
-        Task<bool> Start();
-        Task<bool> Stop();
-        IDictionary<string, dynamic> GetStats();
-    }
+    string Name { get; }
+    Task<bool> StartAsync();
+    Task<bool> StopAsync();
+    IDictionary<string, dynamic> GetStats();
 }

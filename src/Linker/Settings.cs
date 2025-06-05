@@ -1,31 +1,41 @@
-﻿namespace Linker
+﻿namespace Linker;
+
+public class Settings
 {
-    public class Settings
+    public Link[] Links { get; set; }
+    public int MaxBufferSize { get; }
+    public bool HandleConflicts { get; }
+    public bool ResolveLinkTos { get; }
+
+    public static Settings Default()
     {
-        public int SynchronisationInterval { get; }
-        public int StatsInterval { get; }
-        public int MaxBufferSize { get; }
-        public int MaxLiveQueue { get; }
-        public int ReadBatchSize { get; }
-        public bool HandleConflicts { get; }
-        public bool ResolveLinkTos { get; }
-        public static Settings Default()
-        {
-            return new Settings(SettingsDefaults.SynchronisationInterval,
-                SettingsDefaults.HandleConflicts, SettingsDefaults.StatsInterval,
-                SettingsDefaults.MaxBufferSize, SettingsDefaults.MaxLiveQueue,
-                SettingsDefaults.ReadBatchSize, SettingsDefaults.ResolveLinkTos);
-        }
-        public Settings(int synchronisationInterval, bool handleConflicts, int statsInterval, int maxBufferSize,
-            int maxLiveQueue, int readBatchSize, bool resolveLinkTos)
-        {
-            SynchronisationInterval = synchronisationInterval;
-            HandleConflicts = handleConflicts;
-            StatsInterval = statsInterval;
-            MaxBufferSize = maxBufferSize;
-            MaxLiveQueue = maxLiveQueue;
-            ReadBatchSize = readBatchSize;
-            ResolveLinkTos = resolveLinkTos;
-        }
+        return new Settings(SettingsDefaults.HandleConflicts, 
+            SettingsDefaults.MaxBufferSize, SettingsDefaults.ResolveLinkTos);
     }
+
+    public Settings(bool handleConflicts, int maxBufferSize, bool resolveLinkTos)
+    {
+        HandleConflicts = handleConflicts;
+        MaxBufferSize = maxBufferSize;
+        ResolveLinkTos = resolveLinkTos;
+    }
+}
+
+public class Link
+{
+    public Origin Origin { get; set; }
+    public Destination Destination { get; set; }
+    public IEnumerable<Filter> Filters { get; set; }
+}
+
+public class Origin
+{
+    public string ConnectionString { get; set; }
+    public string ConnectionName { get; set; }
+}
+
+public class Destination
+{
+    public string ConnectionString { get; set; }
+    public string ConnectionName { get; set; }
 }

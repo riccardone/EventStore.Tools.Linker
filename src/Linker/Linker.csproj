@@ -1,23 +1,29 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <PackageProjectUrl>https://github.com/riccardone/EventStore.Tools.Linker</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/riccardone/EventStore.Tools.Linker</RepositoryUrl>
-    <RepositoryType>Github</RepositoryType>
-    <PackageTags>EventStore, Cross Cluster Replication</PackageTags>
-    <Description>Replicating user data between EventStore clusters or single instances</Description>
-    <PackageReleaseNotes>updated eventstore.client to v5.0.6</PackageReleaseNotes>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.1.5</Version>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Description>Link KurrentDb instances to keep them in sync</Description>
     <Copyright>Riccardo Di Nuzzo</Copyright>
-    <Authors>Riccardo Di Nuzzo</Authors>
+    <PackageProjectUrl>https://github.com/riccardone/EventStore.Tools.Linker</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/riccardone/EventStore.Tools.Linker</RepositoryUrl>
+    <Title>Linker</Title>
+    <Version>2.0.0</Version>
+    <PackageReleaseNotes>upgrade Linker to KurrentDb</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="eventstore.client" Version="5.0.6" />
-    <PackageReference Include="EventStore.Tools.PositionRepository" Version="1.0.2" />
-    <PackageReference Include="microsoft.csharp" Version="4.7.0" />
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="EventStore.Tools.PositionRepository.Gprc" Version="1.4.2" />
   </ItemGroup>
 
 </Project>
