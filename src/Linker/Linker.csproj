@@ -4,7 +4,22 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Description>Link KurrentDb instances to keep them in sync</Description>
+    <Copyright>Riccardo Di Nuzzo</Copyright>
+    <PackageProjectUrl>https://github.com/riccardone/EventStore.Tools.Linker</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/riccardone/EventStore.Tools.Linker</RepositoryUrl>
+    <Title>Linker</Title>
+    <Version>2.0.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="EventStore.Tools.PositionRepository.Gprc" Version="1.4.2" />
