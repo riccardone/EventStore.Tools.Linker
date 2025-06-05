@@ -8,6 +8,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using EventStore.PositionRepository.Gprc;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace SimpleClient;
 
@@ -25,13 +27,15 @@ static class Program
     {
         _logger = _loggerFactory.CreateLogger("ReplicaLogger");
         _logger.LogInformation("Starting Replica Services...");
-
+        var services = new List<ILinkerService>();
         try
         {
             var config = BuildConfig();
-            var links = config.GetSection("links").Get<IEnumerable<Link>>();
-            var services = new List<LinkerService>();
+            var settings = config.GetSection("settings").Get<Settings>() ?? Settings.Default();
+            var links = config.GetSection("links").Get<IEnumerable<Link>>() ?? Enumerable.Empty<Link>();
             ILinkerConnectionBuilder origin = default;
+            _logger.LogInformation(
+                $"Global settings loaded: MaxBufferSize={settings.MaxBufferSize}, HandleConflicts={settings.HandleConflicts}");
             foreach (var link in links)
             {
                 if (link.Filters == null || !link.Filters.Any())
@@ -40,6 +44,7 @@ static class Program
                     var defaultFilter = new Filter(FilterType.Stream, "*", FilterOperation.Include);
                     link.Filters = new List<Filter> { defaultFilter };
                 }
+
                 var filters = link.Filters.Select(linkFilter => new Filter
                 {
                     FilterOperation = linkFilter.FilterOperation,
@@ -52,9 +57,12 @@ static class Program
                 var d = new LinkerConnectionBuilder(KurrentDBClientSettings.Create(link.Destination.ConnectionString),
                     link.Destination.ConnectionName);
                 origin ??= o;
-                var service = new LinkerService(o,d, filterService, Settings.Default(), _loggerFactory);
+                var service = new LinkerService(o, d,
+                    new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
+                    filterService, settings, _loggerFactory);
                 services.Add(service);
             }
+
             _logger.LogInformation($"Found {services.Count} services to start");
             await StartServices(services);
 
@@ -62,13 +70,17 @@ static class Program
             while (true)
             {
                 var key = Console.ReadKey();
-                if (key.Key == ConsoleKey.W)
+                switch (key.Key)
                 {
-                    _logger.LogInformation("Write the stream name");
-                    var stream = Console.ReadLine();
-                    _logger.LogInformation("Write the event Type");
-                    var eventType = Console.ReadLine();
-                    await AppendTestEvent(stream, eventType, origin);
+                    case ConsoleKey.W:
+                    {
+                        _logger.LogInformation("Write the stream name");
+                        var stream = Console.ReadLine();
+                        _logger.LogInformation("Write the event Type");
+                        var eventType = Console.ReadLine();
+                        await AppendTestEvent(stream, eventType, origin);
+                        break;
+                    }
                 }
             }
         }
@@ -76,17 +88,28 @@ static class Program
         {
             _logger.LogError(e.GetBaseException().Message);
         }
+        finally
+        {
+            if (services.Any())
+            {
+                foreach (var service in services)
+                {
+                    try { await service.StopAsync(); }
+                    catch (Exception ex) { _logger.LogError($"Failed to stop {service.Name}: {ex.Message}"); }
+                }
+            }
+        }
 
         _logger.LogInformation("Press enter to exit the program");
         Console.ReadLine();
     }
 
-    private static async Task StartServices(IEnumerable<LinkerService> services)
+    private static async Task StartServices(IEnumerable<ILinkerService> services)
     {
         foreach (var linkerService in services)
         {
             _logger.LogInformation($"Starting {linkerService.Name}");
-            await linkerService.Start();
+            await linkerService.StartAsync();
         }
     }
 

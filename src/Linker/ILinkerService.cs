@@ -3,7 +3,7 @@
 public interface ILinkerService
 {
     string Name { get; }
-    Task<bool> Start();
-    Task<bool> Stop();
+    Task<bool> StartAsync();
+    Task<bool> StopAsync();
     IDictionary<string, dynamic> GetStats();
 }

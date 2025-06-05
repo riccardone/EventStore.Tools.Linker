@@ -7,48 +7,6 @@ namespace Linker;
 
 public class LinkerHelper
 {
-    public PerfTuneSettings OptimizeSettings(long lastExecutionTime, PerfTuneSettings currentPerfTuneSettings, int maxBufferSizeLimit = 1500, double differentialLimit = 1.10, int geoReplicaClock = 1000)
-    {
-        if (differentialLimit > 1.50)
-            differentialLimit = 1.50;
-        if (differentialLimit < 1)
-            differentialLimit = 1.01;
-
-        if (maxBufferSizeLimit > 5000)
-            maxBufferSizeLimit = 5000;
-        if (maxBufferSizeLimit < 1)
-            maxBufferSizeLimit = 1;
-
-        var optimizedMaxBufferSize = currentPerfTuneSettings.MaxBufferSize;
-        var optimizedMaxLiveQueue = currentPerfTuneSettings.MaxLiveQueue;
-        var optimizedReadBatchSize = currentPerfTuneSettings.ReadBatchSize;
-
-        // Should we increase performances?
-        //if (currentPerfTuneSettings.MaxBufferSize <= maxBufferSizeLimit && lastExecutionTime < geoReplicaClock)
-        //    optimizedMaxBufferSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxBufferSize * differentialLimit,
-        //        MidpointRounding.AwayFromZero));
-
-        //if (currentPerfTuneSettings.MaxLiveQueue <= CatchUpSubscriptionSettings.Default.MaxLiveQueueSize && lastExecutionTime < geoReplicaClock)
-        //    optimizedMaxLiveQueue = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxLiveQueue * differentialLimit,
-        //        MidpointRounding.AwayFromZero));
-        //if (currentPerfTuneSettings.ReadBatchSize <= CatchUpSubscriptionSettings.Default.ReadBatchSize && lastExecutionTime < geoReplicaClock)
-        //    optimizedReadBatchSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.ReadBatchSize * differentialLimit,
-        //        MidpointRounding.AwayFromZero));
-
-        //// Should we decrease performances?
-        //if (currentPerfTuneSettings.MaxBufferSize >= maxBufferSizeLimit && lastExecutionTime > geoReplicaClock)
-        //    optimizedMaxBufferSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxBufferSize / differentialLimit,
-        //        MidpointRounding.AwayFromZero));
-        //if (currentPerfTuneSettings.MaxLiveQueue >= CatchUpSubscriptionSettings.Default.MaxLiveQueueSize && lastExecutionTime > geoReplicaClock)
-        //    optimizedMaxLiveQueue = Convert.ToInt32(Math.Round(currentPerfTuneSettings.MaxLiveQueue / differentialLimit,
-        //        MidpointRounding.AwayFromZero));
-        //if (currentPerfTuneSettings.ReadBatchSize >= CatchUpSubscriptionSettings.Default.ReadBatchSize && lastExecutionTime > geoReplicaClock)
-        //    optimizedReadBatchSize = Convert.ToInt32(Math.Round(currentPerfTuneSettings.ReadBatchSize / differentialLimit,
-        //        MidpointRounding.AwayFromZero));
-
-        return new PerfTuneSettings(optimizedMaxBufferSize, optimizedMaxLiveQueue, optimizedReadBatchSize);
-    }
-
     public bool IsValidForReplica(string eventType, string eventStreamId, Position? originalPosition, string positionEventType, IFilterService filterService)
     {
         if (eventType == null)

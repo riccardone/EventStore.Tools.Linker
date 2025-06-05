@@ -1,6 +1,7 @@
 using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using Linker;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NUnit.Framework;
 using NUnit.Framework.Legacy;
@@ -20,10 +21,10 @@ public class LinkerServiceTests
         destinationBuilder.Setup(a => a.Build()).Returns(connection.Object);
         var positionRepo = new Mock<IPositionRepository>();
         var sut = new LinkerService(originBuilder.Object, destinationBuilder.Object, positionRepo.Object, null,
-            Settings.Default(), new NullLogger());
+            Settings.Default(), new NullLoggerFactory());
 
         // Act
-        var result = sut.Start().Result;
+        var result = sut.StartAsync().Result;
 
         // Verify
         ClassicAssert.IsTrue(result);

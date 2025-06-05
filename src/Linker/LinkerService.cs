@@ -1,14 +1,15 @@
 ﻿using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
-using System.Collections.Concurrent;
+using System.Threading.Channels;
 using System.Timers;
 using Microsoft.Extensions.Logging;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Linker;
 
 public class LinkerService : ILinkerService, IAsyncDisposable
 {
-    private readonly ILinkerLogger _logger;
+    private readonly ILogger _logger;
     private readonly IPositionRepository _positionRepository;
     private readonly IFilterService? _filterService;
     private readonly bool _handleConflicts;
@@ -20,23 +21,18 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private KurrentDBClient _originConnection;
     private KurrentDBClient _destinationConnection;
 
-    private readonly ConcurrentQueue<BufferedEvent> _internalBuffer = new();
+    private readonly Channel<BufferedEvent> _channel;
+    private Task? _processingTask;
+
     private readonly System.Timers.Timer _timerForStats;
-    private readonly System.Timers.Timer _processorTimer;
 
     private readonly LinkerHelper _replicaHelper;
-    private PerfTuneSettings _perfTuneSettings;
     private readonly CancellationTokenSource _cts = new();
     private Task? _subscriptionTask;
     private bool _started;
 
-    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
-        IFilterService? filterService, Settings settings, ILoggerFactory loggerFactory) : this(originBuilder,
-        destinationBuilder,
-        new PositionRepository($"PositionStream-{destinationBuilder.ConnectionName}", "PositionUpdated",
-            destinationBuilder.Build()), filterService, settings, new Logger(nameof(LinkerService), loggerFactory))
-    {
-    }
+    private long _replicatedSinceLastStats;
+    private long _replicatedTotal;
 
     public LinkerService(
         ILinkerConnectionBuilder originBuilder,
@@ -44,13 +40,13 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         IPositionRepository positionRepository,
         IFilterService? filterService,
         Settings settings,
-        ILinkerLogger logger)
+        ILoggerFactory loggerFactory)
     {
         Ensure.NotNull(originBuilder, nameof(originBuilder));
         Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
         Ensure.NotNull(positionRepository, nameof(positionRepository));
 
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger(nameof(LinkerService));
         Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
 
         _originConnectionBuilder = originBuilder;
@@ -60,54 +56,82 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _filterService = filterService;
         _handleConflicts = settings.HandleConflicts;
 
-        _perfTuneSettings = new PerfTuneSettings(settings.MaxBufferSize, settings.MaxLiveQueue, settings.ReadBatchSize);
+        _channel = Channel.CreateBounded<BufferedEvent>(new BoundedChannelOptions(settings.MaxBufferSize)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleWriter = false,
+            SingleReader = true
+        });
         _replicaHelper = new LinkerHelper();
 
-        _timerForStats = new System.Timers.Timer(settings.StatsInterval);
+        _timerForStats = new System.Timers.Timer(3000);
         _timerForStats.Elapsed += TimerForStats_Elapsed;
-
-        _processorTimer = new System.Timers.Timer(settings.SynchronisationInterval);
-        _processorTimer.Elapsed += ProcessorTimer_Elapsed;
     }
 
-    public async Task<bool> Start()
+    public async Task<bool> StartAsync()
     {
-        await Stop(); // Ensure clean startup
+        if (_started) return true;
+
+        await StopAsync();
+
+        if (!_positionRepository.TryGet(out _lastPosition))
+            throw new Exception("Error retriev position");
 
         _destinationConnection = _destinationConnectionBuilder.Build();
         _originConnection = _originConnectionBuilder.Build();
 
         _started = true;
 
+        _processingTask = Task.Run(ProcessChannelEventsAsync);
         _subscriptionTask = SubscribeMeGrpc(_cts.Token);
 
         _timerForStats.Start();
-        _processorTimer.Start();
 
-        _logger.Info($"{Name} started.");
+        _logger.LogInformation($"{Name} started.");
 
         return true;
     }
 
-    public async Task<bool> Stop()
+    public async Task<bool> StopAsync()
     {
-        if (!_started) return true;
+        if (!_started)
+            return true;
 
-        _cts.Cancel();
+        await _cts.CancelAsync();
 
         _timerForStats.Stop();
-        _processorTimer.Stop();
 
-        if (_subscriptionTask != null)
+        _channel.Writer.TryComplete();
+
+        if (_subscriptionTask is not null)
         {
-            try { await _subscriptionTask; }
-            catch (OperationCanceledException) { /* expected */ }
+            try
+            {
+                await _subscriptionTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected on cancellation
+            }
+        }
+
+        if (_processingTask is not null)
+        {
+            try
+            {
+                await _processingTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected on cancellation
+            }
+            _processingTask = null;
         }
 
         await DisposeConnectionsAsync();
 
         _started = false;
-        _logger.Info($"{Name} stopped.");
+        _logger.LogInformation($"{Name} stopped.");
         return true;
     }
 
@@ -119,16 +143,37 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             await _destinationConnection.DisposeAsync();
     }
 
+    private async Task ProcessChannelEventsAsync()
+    {
+        try
+        {
+            await foreach (var evt in _channel.Reader.ReadAllAsync(_cts.Token))
+            {
+                await AppendEventAsync(evt);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Channel processing error: {ex.GetBaseException().Message}");
+            await RestartServiceAsync();
+        }
+    }
+
+
     private async Task SubscribeMeGrpc(CancellationToken ctsToken)
     {
-        await using var subscription = _originConnection.SubscribeToAll(FromAll.Start, cancellationToken: ctsToken,
+        await using var subscription = _originConnection.SubscribeToAll(FromAll.After(_lastPosition), cancellationToken: ctsToken,
             resolveLinkTos: false, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {
             switch (message)
             {
                 case StreamMessage.Event(var evnt):
-                    _logger.Debug($"{Name} Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
+                    _logger.LogDebug($"{Name} Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
                     await HandleEventAsync(evnt);
                     break;
             }
@@ -164,59 +209,24 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             return;
         }
 
-        // Implement proper back-pressure logic here if needed
-        //_internalBuffer.Enqueue(new BufferedEvent(bufferedEvent.StreamId, bufferedEvent.EventNumber, bufferedEvent.OriginalPosition,
-        //    new EventData(bufferedEvent.EventData.EventId, bufferedEvent.EventData.Type,
-        //        bufferedEvent.EventData.Data, _replicaHelper.SerializeObject(enrichedMetadata)), bufferedEvent.Created));
-        _internalBuffer.Enqueue(bufferedEvent);
-    }
-
-    private async void ProcessorTimer_Elapsed(object sender, ElapsedEventArgs e)
-    {
-        _processorTimer.Stop();
-        try
-        {
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            await ProcessBufferedEventsAsync();
-            watch.Stop();
-
-            _logger.Debug($"Processed {_internalBuffer.Count} events in {watch.ElapsedMilliseconds}ms");
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"Processing error: {ex.GetBaseException().Message}");
-            await RestartServiceAsync();
-        }
-        finally
-        {
-            _processorTimer.Start();
-        }
-    }
-
-    private async Task ProcessBufferedEventsAsync()
-    {
-        var tasks = new List<Task>();
-
-        while (_internalBuffer.TryDequeue(out var evt))
-        {
-            tasks.Add(AppendEventAsync(evt));
-        }
-
-        await Task.WhenAll(tasks);
+        await _channel.Writer.WriteAsync(bufferedEvent, _cts.Token);
     }
 
     private async Task AppendEventAsync(BufferedEvent evt)
     {
         try
         {
-            await _destinationConnection.AppendToStreamAsync(evt.StreamId, evt.EventNumber.ToUInt64() - 1, new[] { evt.EventData });
+            await _destinationConnection.AppendToStreamAsync(evt.StreamId,
+                StreamState.StreamRevision(evt.EventNumber.ToUInt64() - 1), new[] { evt.EventData });
             _lastPosition = evt.OriginalPosition;
             _positionRepository.Set(_lastPosition);
+            Interlocked.Increment(ref _replicatedSinceLastStats);
+            Interlocked.Increment(ref _replicatedTotal);
         }
         catch (WrongExpectedVersionException ex)
         {
             if (!_handleConflicts || !await HandleConflictAsync(evt, ex))
-                _logger.Warn($"Conflict handling failed: {ex.Message}");
+                _logger.LogWarning($"Conflict handling failed: {ex.Message}");
         }
     }
 
@@ -240,20 +250,26 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         }
         catch (Exception innerEx)
         {
-            _logger.Error($"Conflict append failed: {innerEx.Message}");
+            _logger.LogError($"Conflict append failed: {innerEx.Message}");
             return false;
         }
     }
 
     private void TimerForStats_Elapsed(object sender, ElapsedEventArgs e)
     {
-        // Implement your stats logic here
+        var replicatedThisInterval = Interlocked.Exchange(ref _replicatedSinceLastStats, 0);
+        var totalReplicated = Interlocked.Read(ref _replicatedTotal);
+        var bufferSize = _channel.Reader.Count;
+
+        _logger.LogInformation($"{Name} stats: replicated {replicatedThisInterval} events in interval, total: {totalReplicated}, buffer: {bufferSize}, position: {_lastPosition}");
     }
 
     private async Task RestartServiceAsync()
     {
-        await Stop();
-        await Start();
+        _logger.LogWarning($"{Name} restarting after error...");
+        await Task.Delay(1000);
+        await StopAsync();
+        await StartAsync();
     }
 
     public IDictionary<string, dynamic> GetStats() => new Dictionary<string, dynamic>
@@ -262,13 +278,14 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         ["from"] = _originConnectionBuilder.ConnectionName,
         ["to"] = _destinationConnectionBuilder.ConnectionName,
         ["isRunning"] = _started,
-        ["lastPosition"] = _lastPosition
+        ["lastPosition"] = _lastPosition,
+        ["bufferedEvents"] = _channel.Reader.Count,
+        ["replicatedTotal"] = Interlocked.Read(ref _replicatedTotal)
     };
 
     public async ValueTask DisposeAsync()
     {
-        await Stop();
+        await StopAsync();
         _timerForStats.Dispose();
-        _processorTimer.Dispose();
     }
 }
