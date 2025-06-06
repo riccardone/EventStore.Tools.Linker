@@ -7,7 +7,7 @@ namespace Linker;
 
 public class LinkerHelper
 {
-    public bool IsValidForReplica(string eventType, string eventStreamId, Position? originalPosition, string positionEventType, IFilterService filterService)
+    public bool IsValidForReplica(string eventType, string eventStreamId, Position? originalPosition, string positionEventType, IFilterService? filterService)
     {
         if (eventType == null)
             return false;
@@ -25,15 +25,15 @@ public class LinkerHelper
 
     public bool TryProcessMetadata(string streamId, StreamPosition eventNumber, DateTime created, string origin, IDictionary<string, JsonNode?> inputMetadata, out IDictionary<string, JsonNode> outputMetadata)
     {
-        outputMetadata = null;
+        outputMetadata = new Dictionary<string, JsonNode>();
 
         if (inputMetadata.ContainsKey("$local"))
             return false;
 
         // We don't want to replicate an event back to any of its origins
-        if (inputMetadata.ContainsKey("$origin"))
+        if (inputMetadata.TryGetValue("$origin", out var originNode) && originNode != null)
         {
-            string[] origins = inputMetadata["$origin"].ToString().Split(',');
+            string[] origins = originNode.ToString().Split(',');
             if (origins.Any(o => o.Equals(origin)))
                 return false;
         }
@@ -42,24 +42,24 @@ public class LinkerHelper
         return true;
     }
 
-    private IDictionary<string, JsonNode> EnrichMetadata(string streamId, long eventNumber, DateTime created, IDictionary<string, JsonNode> metadata, string origin)
+    private IDictionary<string, JsonNode> EnrichMetadata(string streamId, long eventNumber, DateTime created, IDictionary<string, JsonNode?> metadata, string origin)
     {
-        if (metadata.ContainsKey("$origin"))
-            // This node is part of a replica chain and therefore we don't want to forget the previous origins
-            metadata["$origin"] = $"{metadata["$origin"]},{origin}";
+        // Convert to mutable dictionary, filtering out null values
+        var result = metadata.Where(kvp => kvp.Value != null)
+                           .ToDictionary(kvp => kvp.Key, kvp => kvp.Value!);
+
+        // Handle $origin - either append to existing or add new
+        if (result.TryGetValue("$origin", out var existingOrigin))
+            result["$origin"] = $"{existingOrigin},{origin}";
         else
-            metadata.Add("$origin", origin);
+            result["$origin"] = origin;
 
-        if (!metadata.ContainsKey("$applies"))
-            metadata.Add("$applies", created.ToString("o"));
+        // Add metadata if not already present
+        result.TryAdd("$applies", created.ToString("o"));
+        result.TryAdd("$eventStreamId", streamId);
+        result.TryAdd("$eventNumber", eventNumber);
 
-        if (!metadata.ContainsKey("$eventStreamId"))
-            metadata.Add("$eventStreamId", streamId);
-
-        if (!metadata.ContainsKey("$eventNumber"))
-            metadata.Add("$eventNumber", eventNumber);
-
-        return metadata;
+        return result;
     }
 
     public int CalculateSpeed(int currentCountPerSec, int previousCountPerSec)
