@@ -1,8 +1,9 @@
 ﻿using EventStore.PositionRepository.Gprc;
+using Grpc.Core;
 using KurrentDB.Client;
+using Microsoft.Extensions.Logging;
 using System.Threading.Channels;
 using System.Timers;
-using Microsoft.Extensions.Logging;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Linker;
@@ -187,31 +188,28 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         if (evt.Event == null || !evt.OriginalPosition.HasValue)
             return;
 
-        var bufferedEvent = new BufferedEvent(
-            evt.Event.EventStreamId,
-            evt.Event.EventNumber,
-            evt.OriginalPosition.Value,
-            new EventData(evt.Event.EventId, evt.Event.EventType, evt.Event.Data, evt.Event.Metadata),
-            evt.Event.Created);
-
         if (!_replicaHelper.IsValidForReplica(
-            bufferedEvent.EventData.Type, bufferedEvent.StreamId, bufferedEvent.OriginalPosition, 
+                evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition.Value, 
             _positionRepository.PositionEventType, _filterService))
         {
-            _lastPosition = bufferedEvent.OriginalPosition;
+            _lastPosition = evt.OriginalPosition.Value;
             return;
         }
 
-        if (!_replicaHelper.TryProcessMetadata(bufferedEvent.StreamId, bufferedEvent.EventNumber, bufferedEvent.Created,
+        if (!_replicaHelper.TryProcessMetadata(evt.Event.EventStreamId, evt.Event.EventNumber, evt.Event.Created,
             _originConnectionBuilder.ConnectionName,
-            _replicaHelper.DeserializeObject(bufferedEvent.EventData.Metadata),
+            _replicaHelper.DeserializeObject(evt.Event.Metadata),
             out var enrichedMetadata))
         {
-            _lastPosition = bufferedEvent.OriginalPosition;
+            _lastPosition = evt.OriginalPosition.Value;
             _positionRepository.Set(_lastPosition);
             return;
         }
 
+        var bufferedEvent = new BufferedEvent(evt.Event.EventStreamId, evt.Event.EventNumber,
+            evt.OriginalPosition.Value,
+            new EventData(evt.Event.EventId, evt.Event.EventType, evt.Event.Data,
+                _replicaHelper.SerializeObject(enrichedMetadata)), evt.Event.Created);
         await _channel.Writer.WriteAsync(bufferedEvent, _cts.Token);
     }
 

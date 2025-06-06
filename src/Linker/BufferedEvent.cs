@@ -2,22 +2,19 @@
 
 namespace Linker;
 
-public class BufferedEvent : IComparable<BufferedEvent>
+public class BufferedEvent(
+    string streamId,
+    StreamPosition eventNumber,
+    Position originalPosition,
+    EventData eventData,
+    DateTime created)
+    : IComparable<BufferedEvent>
 {
-    public string StreamId { get; }
-    public StreamPosition EventNumber { get; }
-    public Position OriginalPosition { get; }
-    public EventData EventData { get; }
-    public DateTime Created { get; }
-
-    public BufferedEvent(string streamId, StreamPosition eventNumber, Position originalPosition, EventData eventData, DateTime created)
-    {
-        StreamId = streamId;
-        EventNumber = eventNumber;
-        OriginalPosition = originalPosition;
-        EventData = eventData;
-        Created = created;
-    }
+    public string StreamId { get; } = streamId;
+    public StreamPosition EventNumber { get; } = eventNumber;
+    public Position OriginalPosition { get; } = originalPosition;
+    public EventData EventData { get; private set; } = eventData;
+    public DateTime Created { get; } = created;
 
     public int CompareTo(BufferedEvent? that)
     {
