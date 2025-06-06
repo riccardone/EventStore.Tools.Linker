@@ -24,9 +24,4 @@ public class Filter
         Value = value;
         FilterOperation = filterOperation;
     }
-
-    public Filter()
-    {
-            
-    }
 }

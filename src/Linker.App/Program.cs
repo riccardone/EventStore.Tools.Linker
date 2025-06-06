@@ -45,16 +45,13 @@ static class Program
                     link.Filters = new List<Filter> { defaultFilter };
                 }
 
-                var filters = link.Filters.Select(linkFilter => new Filter
-                {
-                    FilterOperation = linkFilter.FilterOperation,
-                    FilterType = linkFilter.FilterType,
-                    Value = linkFilter.Value
-                }).ToList();
+                var filters = link.Filters.Select(linkFilter => new Filter(linkFilter.FilterType, linkFilter.Value, linkFilter.FilterOperation)).ToList();
                 var filterService = new FilterService(filters);
-                var o = new LinkerConnectionBuilder(KurrentDBClientSettings.Create(link.Origin.ConnectionString),
+                var o = new LinkerConnectionBuilder(
+                    KurrentDBClientSettings.Create(link.Origin.ConnectionString),
                     link.Origin.ConnectionName);
-                var d = new LinkerConnectionBuilder(KurrentDBClientSettings.Create(link.Destination.ConnectionString),
+                var d = new LinkerConnectionBuilder(
+                    KurrentDBClientSettings.Create(link.Destination.ConnectionString),
                     link.Destination.ConnectionName);
                 origin ??= o;
                 var service = new LinkerService(o, d,

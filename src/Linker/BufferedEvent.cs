@@ -19,8 +19,9 @@ public class BufferedEvent : IComparable<BufferedEvent>
         Created = created;
     }
 
-    public int CompareTo(BufferedEvent that)
+    public int CompareTo(BufferedEvent? that)
     {
+        if (that == null) return 1;
         if (that.StreamId.Equals(StreamId) && that.EventNumber.Equals(EventNumber) &&
             that.EventData.EventId.Equals(EventData.EventId))
             return 0;

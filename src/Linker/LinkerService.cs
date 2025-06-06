@@ -18,8 +18,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private readonly ILinkerConnectionBuilder _originConnectionBuilder;
     private readonly ILinkerConnectionBuilder _destinationConnectionBuilder;
-    private KurrentDBClient _originConnection;
-    private KurrentDBClient _destinationConnection;
+    private KurrentDBClient? _originConnection;
+    private KurrentDBClient? _destinationConnection;
 
     private readonly Channel<BufferedEvent> _channel;
     private Task? _processingTask;
@@ -166,6 +166,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private async Task SubscribeMeGrpc(CancellationToken ctsToken)
     {
+        if (_originConnection == null)
+            throw new Exception("Origin connection is not initialized");
         await using var subscription = _originConnection.SubscribeToAll(FromAll.After(_lastPosition), cancellationToken: ctsToken,
             resolveLinkTos: false, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
@@ -192,8 +194,9 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             new EventData(evt.Event.EventId, evt.Event.EventType, evt.Event.Data, evt.Event.Metadata),
             evt.Event.Created);
 
-        if (!_replicaHelper.IsValidForReplica(bufferedEvent.EventData.Type, bufferedEvent.StreamId,
-                bufferedEvent.OriginalPosition, _positionRepository.PositionEventType, _filterService))
+        if (!_replicaHelper.IsValidForReplica(
+            bufferedEvent.EventData.Type, bufferedEvent.StreamId, bufferedEvent.OriginalPosition, 
+            _positionRepository.PositionEventType, _filterService))
         {
             _lastPosition = bufferedEvent.OriginalPosition;
             return;
@@ -214,6 +217,9 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private async Task AppendEventAsync(BufferedEvent evt)
     {
+        if (_destinationConnection == null)
+            throw new Exception("Destination connection is not initialized");
+
         try
         {
             await _destinationConnection.AppendToStreamAsync(evt.StreamId,
@@ -232,6 +238,9 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private async Task<bool> HandleConflictAsync(BufferedEvent evt, WrongExpectedVersionException ex)
     {
+        if (_destinationConnection == null)
+            throw new Exception("Destination connection is not initialized");
+
         var conflictStreamId = _handleConflicts
             ? $"$conflicts-from-{_originConnectionBuilder.ConnectionName}-to-{_destinationConnectionBuilder.ConnectionName}"
             : evt.StreamId;
@@ -255,7 +264,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         }
     }
 
-    private void TimerForStats_Elapsed(object sender, ElapsedEventArgs e)
+    private void TimerForStats_Elapsed(object? _, ElapsedEventArgs e)
     {
         var replicatedThisInterval = Interlocked.Exchange(ref _replicatedSinceLastStats, 0);
         var totalReplicated = Interlocked.Read(ref _replicatedTotal);
