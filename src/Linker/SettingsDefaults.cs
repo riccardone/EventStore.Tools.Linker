@@ -2,7 +2,7 @@
 
 public static class SettingsDefaults
 {
-    public const bool HandleConflicts = false;
-    public const int MaxBufferSize = 10;
-    public const bool ResolveLinkTos = true;
+    public const bool HandleConflicts = true;
+    public const int MaxBufferSize = 5000;
+    public const bool ResolveLinkTos = false;
 }
