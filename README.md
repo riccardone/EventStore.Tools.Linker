@@ -3,20 +3,61 @@
 # Linker: a tool for KurrentDb (former EventStore) cross cluster replication
 This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/).  
 
-This is a minimal appsettings.json assuming you are running two instances of KurrentDb locally on different ports
+This is a minimal ACTIVE-ACTIVE appsettings.json configuration while running on different ports two instances of KurrentDb 
 ```
 {
   "links": [
     {
       "origin": {
         "connectionString": "esdb://admin:changeit@localhost:2114?tls=false",
-        "connectionName": "myinstance01"
+        "connectionName": "db01"
       },
       "destination": {
         "connectionString": "esdb://admin:changeit@localhost:2115?tls=false",
-        "connectionName": "myinstance02"
+        "connectionName": "db02"
       },
       "filters": []
+    },
+    {
+      "origin": {
+        "connectionString": "esdb://admin:changeit@localhost:2115?tls=false",
+        "connectionName": "db02"
+      },
+      "destination": {
+        "connectionString": "esdb://admin:changeit@localhost:2114?tls=false",
+        "connectionName": "db01"
+      },
+      "filters": []
+    }
+  ]
+}
+```
+
+This is an example of ACTIVE-PASSIVE configuration with a filter
+```
+{
+  "links": [
+    {
+      "origin": {
+        "connectionString": "esdb://admin:changeit@localhost:2114?tls=false",
+        "connectionName": "db01"
+      },
+      "destination": {
+        "connectionString": "esdb://admin:changeit@localhost:2115?tls=false",
+        "connectionName": "db02"
+      },
+      "filters": [
+        {
+          "filterType": "stream",
+          "value": "diary-input",
+          "filterOperation": "exclude"
+        },
+        {
+          "filterType": "stream",
+          "value": "*",
+          "filterOperation": "include"
+        }
+      ]
     }
   ]
 }

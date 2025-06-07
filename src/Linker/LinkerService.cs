@@ -267,8 +267,11 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         var replicatedThisInterval = Interlocked.Exchange(ref _replicatedSinceLastStats, 0);
         var totalReplicated = Interlocked.Read(ref _replicatedTotal);
         var bufferSize = _channel.Reader.Count;
-       
-        _logger.LogInformation($"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}, position: {_lastPosition}");
+
+        if (replicatedThisInterval.Equals(0))
+            _logger.LogDebug($"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}, position: {_lastPosition}");
+        else
+            _logger.LogInformation($"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}, position: {_lastPosition}");
     }
 
     private async Task RestartServiceAsync()

@@ -33,7 +33,8 @@ static class Program
             var config = BuildConfig();
             var settings = config.GetSection("settings").Get<Settings>() ?? Settings.Default();
             var links = config.GetSection("links").Get<IEnumerable<Link>>() ?? Enumerable.Empty<Link>();
-            ILinkerConnectionBuilder origin = default;
+            ILinkerConnectionBuilder origin = null;
+            ILinkerConnectionBuilder destination = null;
             _logger.LogInformation(
                 $"Global settings loaded: MaxBufferSize={settings.MaxBufferSize}, HandleConflicts={settings.HandleConflicts}");
             foreach (var link in links)
@@ -54,6 +55,7 @@ static class Program
                     KurrentDBClientSettings.Create(link.Destination.ConnectionString),
                     link.Destination.ConnectionName);
                 origin ??= o;
+                destination ??= d;
                 var service = new LinkerService(o, d,
                     new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
                     filterService, settings, _loggerFactory);
@@ -63,19 +65,28 @@ static class Program
             _logger.LogInformation($"Found {services.Count} services to start");
             await StartServices(services);
 
-            // For testing replicating single events press W
+            // For testing: press O to write a test event into the first Origin or D the first Destination found in settings
             while (true)
             {
                 var key = Console.ReadKey();
                 switch (key.Key)
                 {
-                    case ConsoleKey.W:
+                    case ConsoleKey.O:
                     {
-                        _logger.LogInformation("Write the stream name");
+                        _logger.LogInformation($"Write the {origin.ConnectionName} stream name");
                         var stream = Console.ReadLine();
-                        _logger.LogInformation("Write the event Type");
+                        _logger.LogInformation($"Write the {origin.ConnectionName} event Type");
                         var eventType = Console.ReadLine();
                         await AppendTestEvent(stream, eventType, origin);
+                        break;
+                    }
+                    case ConsoleKey.D:
+                    {
+                        _logger.LogInformation($"Write the {destination.ConnectionName} stream name");
+                        var stream = Console.ReadLine();
+                        _logger.LogInformation($"Write the {destination.ConnectionName} event Type");
+                        var eventType = Console.ReadLine();
+                        await AppendTestEvent(stream, eventType, destination);
                         break;
                     }
                 }
