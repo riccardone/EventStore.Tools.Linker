@@ -169,7 +169,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     {
         if (_originConnection == null)
             throw new Exception("Origin connection is not initialized");
-        await using var subscription = _originConnection.SubscribeToAll(FromAll.After(_lastPosition), cancellationToken: ctsToken,
+        await using var subscription = _originConnection.SubscribeToAll(FromAll.After(_lastPosition), cancellationToken: ctsToken, 
             resolveLinkTos: false, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
         await foreach (var message in subscription.Messages)
         {

@@ -11,9 +11,9 @@ public class LinkerHelper
     {
         if (eventType == null)
             return false;
-        if (eventStreamId.StartsWith("$"))
+        if (eventStreamId.StartsWith('$'))
             return false;
-        if (eventType.StartsWith("$") && !eventType.StartsWith("$$$"))
+        if (eventType.StartsWith('$') && !eventType.StartsWith("$$$"))
             return false;
         if (eventType.Equals(positionEventType) ||
             !originalPosition.HasValue)
