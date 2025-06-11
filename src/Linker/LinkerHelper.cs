@@ -9,17 +9,23 @@ public class LinkerHelper
 {
     public bool IsValidForReplica(string eventType, string eventStreamId, Position? originalPosition, string positionEventType, IFilterService? filterService)
     {
-        if (eventType == null)
+        if (string.IsNullOrWhiteSpace(eventType))
             return false;
-        if (eventStreamId.StartsWith('$'))
+
+        // Exclude stream IDs that start with exactly one $ or with $$$
+        // This is to let deleted stream/event to pass
+        if (eventStreamId.StartsWith("$$$") ||
+            (eventStreamId.StartsWith('$') && !eventStreamId.StartsWith("$$")))
             return false;
-        if (eventType.StartsWith('$') && !eventType.StartsWith("$$$"))
+
+        // Exclude position marker or missing position
+        if (eventType.Equals(positionEventType) || !originalPosition.HasValue)
             return false;
-        if (eventType.Equals(positionEventType) ||
-            !originalPosition.HasValue)
-            return false;
+
+        // Apply filter service logic if provided
         if (filterService != null && !filterService.IsValid(eventType, eventStreamId))
             return false;
+
         return true;
     }
 

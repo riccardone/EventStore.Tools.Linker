@@ -170,13 +170,12 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         if (_originConnection == null)
             throw new Exception("Origin connection is not initialized");
         await using var subscription = _originConnection.SubscribeToAll(FromAll.After(_lastPosition), cancellationToken: ctsToken, 
-            resolveLinkTos: false, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.ExcludeSystemEvents()));
+            resolveLinkTos: false, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.RegularExpression(@"^(\$metadata|[^\$].*)")));
         await foreach (var message in subscription.Messages.WithCancellation(ctsToken))
         {
             switch (message)
             {
                 case StreamMessage.Event(var evnt):
-                    _logger.LogDebug($"{Name} Received event {evnt.OriginalEventNumber}@{evnt.OriginalStreamId}");
                     await HandleEventAsync(evnt);
                     break;
             }
@@ -211,6 +210,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             new EventData(evt.Event.EventId, evt.Event.EventType, evt.Event.Data,
                 _replicaHelper.SerializeObject(enrichedMetadata)), evt.Event.Created);
         await _channel.Writer.WriteAsync(bufferedEvent, _cts.Token);
+        _logger.LogDebug($"{Name} Received event {bufferedEvent.EventNumber}@{bufferedEvent.StreamId}");
     }
 
     private async Task AppendEventAsync(BufferedEvent evt)
