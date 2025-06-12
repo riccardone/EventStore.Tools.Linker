@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup .NET 9
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
@@ -27,4 +27,5 @@ jobs:
         run: dotnet build src/Linker.sln -c Release --no-restore
 
       - name: Run Tests
-        run: dotnet test src/Linker.sln --no-build --verbosity normal
+        run: dotnet test src/Linker.sln --configuration Release --verbosity normal
+
