@@ -1,5 +1,7 @@
 # Linker: a tool for KurrentDb (former EventStore) cross cluster replication
-This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/).  
+This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/)
+
+![image](https://github.com/user-attachments/assets/387137d2-a65e-4a19-a96f-e3ab57c58543)
 
 # Configuration Modes
 This app make use of the appsettings.json file to configure Linked EventStore's. You can have as many Links as you need and as your running machine allow you to run. Even when you are replicating at full speed, the Linker logic make use of **backpressure** tecnique in order to not take the full amount of CPU and Memory available.  
