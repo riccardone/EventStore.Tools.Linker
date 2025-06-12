@@ -7,7 +7,7 @@ This library is for replicating user data between EventStore clusters or single 
 This app make use of the appsettings.json file to configure Linked EventStore's. You can have as many Links as you need and as your running machine allow you to run. Even when you are replicating at full speed, the Linker logic make use of **backpressure** tecnique in order to not take the full amount of CPU and Memory available.  
 
 ## Active-Passive
-One instance is the origin, the other instance is the destination. Following is an example for configuring a simple ACTIVE-PASSIVE link showing the use of filters excluding one specific stream.
+One instance is the origin, the other instance is the destination. To configure a simple link with a filter excluding one specific stream:
 ```
 {
   "links": [
