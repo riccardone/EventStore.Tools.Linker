@@ -21,10 +21,10 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore src/EventStore.Tools.Linker.sln
+        run: dotnet restore src/Linker.sln
 
       - name: Build
-        run: dotnet build src/EventStore.Tools.Linker.sln -c Release --no-restore
+        run: dotnet build src/Linker.sln -c Release --no-restore
 
       - name: Run Tests
-        run: dotnet test src/EventStore.Tools.Linker.sln --no-build --verbosity normal
+        run: dotnet test src/Linker.sln --no-build --verbosity normal
