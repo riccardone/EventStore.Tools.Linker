@@ -38,7 +38,7 @@ One instance is the origin, the other instance is the destination. To configure 
 ```
 
 ## MultiMaster  
-Configure two links swapping the same Origin and Destination in order to configure a **multi master** replication.  
+Configure two links swapping the same Origin and Destination for a **multi master** ACTIVE-ACTIVE replication  
 ```
 {
   "links": [
