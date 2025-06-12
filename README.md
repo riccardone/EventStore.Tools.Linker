@@ -1,37 +1,13 @@
 # Linker: a tool for KurrentDb (former EventStore) cross cluster replication
-This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/).  
+This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/)
 
-This is a minimal ACTIVE-ACTIVE appsettings.json configuration while running on different ports two instances of KurrentDb 
-```
-{
-  "links": [
-    {
-      "origin": {
-        "connectionString": "esdb://admin:changeit@localhost:2114?tls=false",
-        "connectionName": "db01"
-      },
-      "destination": {
-        "connectionString": "esdb://admin:changeit@localhost:2115?tls=false",
-        "connectionName": "db02"
-      },
-      "filters": []
-    },
-    {
-      "origin": {
-        "connectionString": "esdb://admin:changeit@localhost:2115?tls=false",
-        "connectionName": "db02"
-      },
-      "destination": {
-        "connectionString": "esdb://admin:changeit@localhost:2114?tls=false",
-        "connectionName": "db01"
-      },
-      "filters": []
-    }
-  ]
-}
-```
+![image](https://github.com/user-attachments/assets/387137d2-a65e-4a19-a96f-e3ab57c58543)
 
-This is an example of ACTIVE-PASSIVE configuration with a filter
+# Configuration Modes
+This app make use of the appsettings.json file to configure Linked EventStore's. You can have as many Links as you need and as your running machine allow you to run. Even when you are replicating at full speed, the Linker logic make use of **backpressure** tecnique in order to not take the full amount of CPU and Memory available.  
+
+## Active-Passive
+One instance is the origin, the other instance is the destination. To configure a simple link with a filter excluding one specific stream:
 ```
 {
   "links": [
@@ -61,16 +37,49 @@ This is an example of ACTIVE-PASSIVE configuration with a filter
 }
 ```
 
-You can also reference this project using Nuget in case you'd like to build your own application
+## MultiMaster  
+Configure two links swapping the same Origin and Destination for a **multi master** ACTIVE-ACTIVE replication  
 ```
-PM> Install-Package Linker  
+{
+  "links": [
+    {
+      "origin": {
+        "connectionString": "esdb://admin:changeit@localhost:2114?tls=false",
+        "connectionName": "db01"
+      },
+      "destination": {
+        "connectionString": "esdb://admin:changeit@localhost:2115?tls=false",
+        "connectionName": "db02"
+      },
+      "filters": []
+    },
+    {
+      "origin": {
+        "connectionString": "esdb://admin:changeit@localhost:2115?tls=false",
+        "connectionName": "db02"
+      },
+      "destination": {
+        "connectionString": "esdb://admin:changeit@localhost:2114?tls=false",
+        "connectionName": "db01"
+      },
+      "filters": []
+    }
+  ]
+}
 ```
 
+## Fan-Out
+Configure the same Origin in separate Links replicating data to different destination for a **Fan-Out** solution.  
+
+## Fan-In
+You can have separate Links with different Origins linked with the same Destination for a **Fan-In** solution. 
+
 # Simplest example usage
-To use the LinkerService you pass the origin and the destination of the data replication. Eact LinkerService is a link between Origin and Destination. It is possible run multiple LinkerService's for more complex scenarios. The Position of the replica can be saved on both sides but it's better to save it on the destination. If you want to control where to save the position you can build your PositionRepository and pass it to the LinkerService.
+To use the LinkerService you pass the origin and the destination of the data replication. Eact LinkerService is a link between Origin and Destination. It is possible run multiple LinkerService's for complex scenarios. The Position of the replica can be saved on both sides but it's better to save it on the destination. If you want to control where to save the position you can build your PositionRepository and pass it to the LinkerService.
   
 # Use filters 
 Without filters, all the user data will be replicated from the Origin to the linked Destination. When you add an exclude filter you must also add at least an include filter to include what else can be replicated.
+
 ## Include streams filters
 You can set a inclusion filter to specify which stream or streams are to be replicated. This will automatically exclude anything else. You can use the wildcard * in the stream string so that you can include any stream that start with 'domain-*' for example.  
 Example to create an inclusive stream filter  
@@ -110,9 +119,6 @@ Following is an example of building the LinkerService with a couple of Include f
 ```
 # Backpressure and performances 
 One of the problem that this tool solves is related to the lack of built-in backpressure management in the EventStore client's and api's. Running the replication with this program, the logic will continuosly adapt the network settings depending on the number of events being replicated.
-  
-# Next development  
-As soon as I have time, I will start building a UI/service to manage and monitor the cross cluster replica between EventStore's. It could be done as a Web application and/or as a Cli program. If you are willing to help open an issue on this repo and get in touch. 
-  
+
 # KurrentDb
 The database being replicated is KurrentDb https://github.com/kurrent-io/KurrentDB 
