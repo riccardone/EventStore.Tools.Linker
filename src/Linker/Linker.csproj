@@ -8,15 +8,24 @@
     <Description>Data replication between KurrentDb instances</Description>
     <Copyright>Riccardo Di Nuzzo</Copyright>
     <PackageProjectUrl>https://github.com/riccardone/Linker</PackageProjectUrl>
-    <PackageReadmeFile></PackageReadmeFile>
-    <RepositoryUrl>https://github.com/riccardone/EventStore.Tools.Linker</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/riccardone/Linker</RepositoryUrl>
     <Title>Linker</Title>
-    <Version>2.0.1</Version>
-    <PackageReleaseNotes>upgrade Linker to KurrentDb</PackageReleaseNotes>
+    <Version>2.0.2</Version>
+    <PackageReleaseNotes>replica of delete events</PackageReleaseNotes>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>KurrentDb; EventSourcing</PackageTags>
   </PropertyGroup>
 
    <ItemGroup>
     <PackageReference Include="EventStore.Tools.PositionRepository.Gprc" Version="1.4.3" />
   </ItemGroup>
+
+   <ItemGroup>
+     <None Update="README.md">
+       <Pack>True</Pack>
+       <PackagePath>\</PackagePath>
+     </None>
+   </ItemGroup>
 
 </Project>
