@@ -2,22 +2,10 @@
 
 public class Settings
 {
-    public int MaxBufferSize { get; }
-    public bool HandleConflicts { get; }
-    public bool ResolveLinkTos { get; }
-
-    public static Settings Default()
-    {
-        return new Settings(
-            SettingsDefaults.HandleConflicts, SettingsDefaults.MaxBufferSize, SettingsDefaults.ResolveLinkTos);
-    }
-
-    public Settings(bool handleConflicts, int maxBufferSize, bool resolveLinkTos)
-    {
-        HandleConflicts = handleConflicts;
-        MaxBufferSize = maxBufferSize;
-        ResolveLinkTos = resolveLinkTos;
-    }
+    public int BufferSize { get; set; } = 10;
+    public bool HandleConflicts { get; set; } = true;
+    public bool ResolveLinkTos { get; set; } = false;
+    public IEnumerable<Link> Links { get; set; } = new List<Link>();
 }
 
 public class Link

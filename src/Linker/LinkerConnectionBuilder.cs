@@ -6,7 +6,7 @@ namespace Linker;
 public class LinkerConnectionBuilder(
     KurrentDBClientSettings connectionSettings,
     string connectionName,
-    X509Certificate2? certsItem1)
+    X509Certificate2? cert)
     : ILinkerConnectionBuilder
 {
     public string ConnectionName { get; } = connectionName;
@@ -18,8 +18,8 @@ public class LinkerConnectionBuilder(
         ConnectionSettings.CreateHttpMessageHandler = () =>
         {
             var handler = new HttpClientHandler();
-            if (certsItem1 == null) return handler;
-            handler.ClientCertificates.Add(certsItem1);
+            if (cert == null) return handler;
+            handler.ClientCertificates.Add(cert);
             handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
             return handler;
         };

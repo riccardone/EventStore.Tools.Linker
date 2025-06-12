@@ -1,9 +1,10 @@
-﻿using EventStore.PositionRepository.Gprc;
-using Grpc.Core;
+﻿using System.Diagnostics;
+using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
 using System.Threading.Channels;
 using System.Timers;
+using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Linker;
@@ -13,7 +14,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private readonly ILogger _logger;
     private readonly IPositionRepository _positionRepository;
     private readonly IFilterService? _filterService;
-    private readonly bool _handleConflicts;
+    private readonly Settings _settings;
     private Position _lastPosition;
     public string Name { get; }
 
@@ -22,18 +23,30 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private KurrentDBClient? _originConnection;
     private KurrentDBClient? _destinationConnection;
 
-    private readonly Channel<BufferedEvent> _channel;
+    private Channel<BufferedEvent> _channel;
     private Task? _processingTask;
 
     private readonly System.Timers.Timer _timerForStats;
 
     private readonly LinkerHelper _replicaHelper;
-    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource _cts = new();
     private Task? _subscriptionTask;
     private bool _started;
 
     private long _replicatedSinceLastStats;
     private long _replicatedTotal;
+
+    private readonly double _currentBackpressureThreshold = 0.8;
+    private readonly List<long> _latencySamples = new();
+    private readonly List<long> _replicationSamples = new();
+    private readonly Lock _adaptiveLock = new();
+    private int _bufferSize;
+    private int _adaptiveIntervalCounter;
+    private readonly decimal _allowedIncreaseOrDecreaseAmount = 0.15m;
+    private readonly double _significantRegressionToTriggerDecrease = -0.10;
+    private readonly double _significantIncreaseToTriggerIncrease = -0.10;
+    public const int MaxAllowedBuffer = 1000;
+    public const int MinAllowedBuffer = 1;
 
     public LinkerService(
         ILinkerConnectionBuilder originBuilder,
@@ -43,10 +56,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         Settings settings,
         ILoggerFactory loggerFactory)
     {
-        Ensure.NotNull(originBuilder, nameof(originBuilder));
-        Ensure.NotNull(destinationBuilder, nameof(destinationBuilder));
-        Ensure.NotNull(positionRepository, nameof(positionRepository));
-
         _logger = loggerFactory.CreateLogger(nameof(LinkerService));
         Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
 
@@ -55,18 +64,58 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
         _positionRepository = positionRepository;
         _filterService = filterService;
-        _handleConflicts = settings.HandleConflicts;
+        _settings = settings;
+        _bufferSize = Math.Clamp(settings.BufferSize, MinAllowedBuffer, MaxAllowedBuffer);
 
-        _channel = Channel.CreateBounded<BufferedEvent>(new BoundedChannelOptions(settings.MaxBufferSize)
+        _channel = CreateNewChannel(_bufferSize);
+
+        _replicaHelper = new LinkerHelper();
+
+        _timerForStats = new System.Timers.Timer(3000);
+        _timerForStats.Elapsed += TimerForStats_Elapsed;
+    }
+
+    private Channel<BufferedEvent> CreateNewChannel(int size)
+    {
+        return Channel.CreateBounded<BufferedEvent>(new BoundedChannelOptions(size)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleWriter = false,
             SingleReader = true
         });
-        _replicaHelper = new LinkerHelper();
+    }
 
-        _timerForStats = new System.Timers.Timer(3000);
-        _timerForStats.Elapsed += TimerForStats_Elapsed;
+    private async Task ResizeChannelAsync(int newSize)
+    {
+        _logger.LogInformation($"{Name}: Resizing buffer from {_bufferSize} to {newSize}");
+
+        await _cts.CancelAsync();
+        _channel.Writer.TryComplete();
+
+        if (_subscriptionTask is not null)
+        {
+            try { await _subscriptionTask; } catch (OperationCanceledException) { }
+        }
+
+        if (_processingTask is not null)
+        {
+            try { await _processingTask; } catch (OperationCanceledException) { }
+        }
+
+        var buffered = new List<BufferedEvent>();
+        while (_channel.Reader.TryRead(out var evt))
+            buffered.Add(evt);
+
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
+        _bufferSize = newSize;
+        _channel = CreateNewChannel(_bufferSize);
+
+        foreach (var evt in buffered)
+            await _channel.Writer.WriteAsync(evt);
+
+        _processingTask = Task.Run(ProcessChannelEventsAsync);
+        _subscriptionTask = SubscribeMeGrpc(_cts.Token);
     }
 
     public async Task<bool> StartAsync()
@@ -99,33 +148,17 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             return true;
 
         await _cts.CancelAsync();
-
         _timerForStats.Stop();
-
         _channel.Writer.TryComplete();
 
         if (_subscriptionTask is not null)
         {
-            try
-            {
-                await _subscriptionTask;
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected on cancellation
-            }
+            try { await _subscriptionTask; } catch (OperationCanceledException) { }
         }
 
         if (_processingTask is not null)
         {
-            try
-            {
-                await _processingTask;
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected on cancellation
-            }
+            try { await _processingTask; } catch (OperationCanceledException) { }
             _processingTask = null;
         }
 
@@ -153,10 +186,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 await AppendEventAsync(evt);
             }
         }
-        catch (OperationCanceledException)
-        {
-            // Expected during shutdown
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             _logger.LogError($"Channel processing error: {ex.GetBaseException().Message}");
@@ -164,21 +194,25 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         }
     }
 
-
     private async Task SubscribeMeGrpc(CancellationToken ctsToken)
     {
         if (_originConnection == null)
             throw new Exception("Origin connection is not initialized");
-        await using var subscription = _originConnection.SubscribeToAll(FromAll.After(_lastPosition), cancellationToken: ctsToken, 
-            resolveLinkTos: false, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.RegularExpression(@"^(\$metadata|[^\$].*)")));
+        await using var subscription = _originConnection.SubscribeToAll(start: FromAll.After(_lastPosition), cancellationToken: ctsToken,
+            resolveLinkTos: _settings.ResolveLinkTos, filterOptions: new SubscriptionFilterOptions(EventTypeFilter.RegularExpression(@"^(\$metadata|[^\$].*)")));
         await foreach (var message in subscription.Messages.WithCancellation(ctsToken))
         {
-            switch (message)
+            var currentBuffer = _channel.Reader.Count;
+            var threshold = _currentBackpressureThreshold;
+
+            if (currentBuffer >= _bufferSize * threshold)
             {
-                case StreamMessage.Event(var evnt):
-                    await HandleEventAsync(evnt);
-                    break;
+                _logger.LogDebug($"{Name}: Backpressure active. Buffer={currentBuffer}/{_bufferSize}, Threshold={threshold:P0}");
+                await Task.Delay(100, ctsToken);
             }
+
+            if (message is StreamMessage.Event(var evnt))
+                await HandleEventAsync(evnt);
         }
     }
 
@@ -187,9 +221,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         if (evt.Event == null || !evt.OriginalPosition.HasValue)
             return;
 
-        if (!_replicaHelper.IsValidForReplica(
-                evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition.Value, 
-            _positionRepository.PositionEventType, _filterService))
+        if (!_replicaHelper.IsValidForReplica(evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition.Value, _positionRepository.PositionEventType, _filterService))
         {
             _lastPosition = evt.OriginalPosition.Value;
             return;
@@ -220,8 +252,16 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
         try
         {
+            var sw = Stopwatch.StartNew();
             await _destinationConnection.AppendToStreamAsync(evt.StreamId,
-                StreamState.StreamRevision(evt.EventNumber.ToUInt64() - 1), new[] { evt.EventData });
+                StreamState.StreamRevision(evt.EventNumber.ToUInt64() - 1), [evt.EventData]);
+            sw.Stop();
+
+            lock (_latencySamples)
+            {
+                _latencySamples.Add(sw.ElapsedMilliseconds);
+                if (_latencySamples.Count > 100) _latencySamples.RemoveAt(0);
+            }
             _lastPosition = evt.OriginalPosition;
             _positionRepository.Set(_lastPosition);
             Interlocked.Increment(ref _replicatedSinceLastStats);
@@ -229,7 +269,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         }
         catch (WrongExpectedVersionException ex)
         {
-            if (!_handleConflicts || !await HandleConflictAsync(evt, ex))
+            if (!_settings.HandleConflicts || !await HandleConflictAsync(evt, ex))
                 _logger.LogWarning($"Conflict handling failed: {ex.Message}");
         }
     }
@@ -239,7 +279,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         if (_destinationConnection == null)
             throw new Exception("Destination connection is not initialized");
 
-        var conflictStreamId = _handleConflicts
+        var conflictStreamId = _settings.HandleConflicts
             ? $"$conflicts-from-{_originConnectionBuilder.ConnectionName}-to-{_destinationConnectionBuilder.ConnectionName}"
             : evt.StreamId;
 
@@ -267,11 +307,52 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         var replicatedThisInterval = Interlocked.Exchange(ref _replicatedSinceLastStats, 0);
         var totalReplicated = Interlocked.Read(ref _replicatedTotal);
         var bufferSize = _channel.Reader.Count;
+        var bufferRatio = (double)bufferSize / _bufferSize;
 
-        if (replicatedThisInterval.Equals(0))
-            _logger.LogDebug($"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}, position: {_lastPosition}");
-        else
-            _logger.LogInformation($"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}, position: {_lastPosition}");
+        long avgLatency;
+        lock (_latencySamples)
+        {
+            avgLatency = _latencySamples.Count > 0 ? (long)_latencySamples.Average() : 0;
+        }
+
+        lock (_adaptiveLock)
+        {
+            _replicationSamples.Add(replicatedThisInterval);
+            if (_replicationSamples.Count > 5)
+                _replicationSamples.RemoveAt(0);
+
+            _adaptiveIntervalCounter++;
+
+            if (_adaptiveIntervalCounter >= 5)
+            {
+                _adaptiveIntervalCounter = 0;
+                var average = _replicationSamples.Average();
+                var previous = _replicationSamples.Take(4).Average();
+
+                var percentChange = previous == 0 ? 1 : (average - previous) / previous;
+                int proposed = _bufferSize;
+
+                int delta = Math.Max(1, (int)Math.Round(_bufferSize * _allowedIncreaseOrDecreaseAmount));
+
+                if (percentChange >= _significantIncreaseToTriggerIncrease)
+                {
+                    // Steady or improving: increase buffer
+                    proposed = Math.Min(MaxAllowedBuffer, _bufferSize + delta);
+                }
+                else if (percentChange < _significantRegressionToTriggerDecrease)
+                {
+                    // Significant regression: decrease buffer
+                    proposed = Math.Max(MinAllowedBuffer, _bufferSize - delta);
+                }
+
+                if (proposed != _bufferSize)
+                    _ = ResizeChannelAsync(proposed);
+
+                _logger.LogInformation($"{Name} adaptive tuning: prevAvg={previous:F1}, currentAvg={average:F1}, proposed bufferSize={proposed}, change={percentChange:P1}");
+            }
+        }
+
+        _logger.LogInformation($"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}/{_bufferSize} ({bufferRatio:P0}), latency: {avgLatency}ms");
     }
 
     private async Task RestartServiceAsync()

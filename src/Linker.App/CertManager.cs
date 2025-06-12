@@ -18,9 +18,7 @@ public class CertManager(ILogger logger)
         {
             if (string.IsNullOrWhiteSpace(certPath) || string.IsNullOrWhiteSpace(privateKey))
                 return false;
-            var originCert = LoadCertificate(certPath);
-            var originPrivateKey = LoadPrivateKey(privateKey);
-            cert = ConvertToX509Certificate2(originCert, originPrivateKey);
+            cert = ConvertToX509Certificate2(LoadCertificate(certPath), LoadPrivateKey(privateKey));
             return true;
         }
         catch (Exception e)
@@ -49,17 +47,12 @@ public class CertManager(ILogger logger)
 
     private static X509Certificate2 ConvertToX509Certificate2(Org.BouncyCastle.X509.X509Certificate cert, AsymmetricKeyParameter privateKey)
     {
-        // Create the PFX (PKCS#12) store with a MemoryStream
         using var stream = new MemoryStream();
         var store = new Pkcs12StoreBuilder().Build();
-
         var certificateEntry = new X509CertificateEntry(cert);
         store.SetCertificateEntry("cert", certificateEntry);
         store.SetKeyEntry("cert", new AsymmetricKeyEntry(privateKey), new[] { certificateEntry });
-
-        // Save the PFX with no password
         store.Save(stream, null, new SecureRandom());
-
         return new X509Certificate2(stream.ToArray(), (string)null, X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
     }
 }

@@ -30,14 +30,15 @@ static class Program
         try
         {
             var config = BuildConfig();
-            var settings = config.GetSection("settings").Get<Settings>() ?? Settings.Default();
-            var links = config.GetSection("links").Get<IEnumerable<Link>>() ?? Enumerable.Empty<Link>();
+            var settings = new Settings();
+            config.Bind(settings);
+            settings.BufferSize = Math.Clamp(settings.BufferSize, LinkerService.MinAllowedBuffer, LinkerService.MaxAllowedBuffer);
+            _logger.LogInformation(
+                $"Global settings loaded: BufferSize={settings.BufferSize}, ResolveLinkTos={settings.ResolveLinkTos}, HandleConflicts={settings.HandleConflicts}");
             ILinkerConnectionBuilder origin = null;
             ILinkerConnectionBuilder destination = null;
-            _logger.LogInformation(
-                $"Global settings loaded: MaxBufferSize={settings.MaxBufferSize}, HandleConflicts={settings.HandleConflicts}");
             var certManager = new CertManager(_loggerFactory.CreateLogger(nameof(CertManager)));
-            foreach (var link in links)
+            foreach (var link in settings.Links)
             {
                 if (link.Filters == null || !link.Filters.Any())
                 {
