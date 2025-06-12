@@ -1,17 +1,16 @@
-﻿using KurrentDB.Client;
-using Linker;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using EventStore.PositionRepository.Gprc;
+using KurrentDB.Client;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
-namespace SimpleClient;
+namespace Linker.App;
 
 static class Program
 {
