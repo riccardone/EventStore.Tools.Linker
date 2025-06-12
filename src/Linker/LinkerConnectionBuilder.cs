@@ -1,11 +1,16 @@
-﻿using KurrentDB.Client;
+﻿using System.Security.Cryptography.X509Certificates;
+using KurrentDB.Client;
 
 namespace Linker;
 
-public class LinkerConnectionBuilder : ILinkerConnectionBuilder
+public class LinkerConnectionBuilder(
+    KurrentDBClientSettings connectionSettings,
+    string connectionName,
+    X509Certificate2? certsItem1)
+    : ILinkerConnectionBuilder
 {
-    public string ConnectionName { get; }
-    private KurrentDBClientSettings ConnectionSettings { get; }
+    public string ConnectionName { get; } = connectionName;
+    private KurrentDBClientSettings ConnectionSettings { get; } = connectionSettings;
 
     public KurrentDBClient Build()
     {
@@ -13,18 +18,11 @@ public class LinkerConnectionBuilder : ILinkerConnectionBuilder
         ConnectionSettings.CreateHttpMessageHandler = () =>
         {
             var handler = new HttpClientHandler();
-#if !DEBUG
-        handler.ClientCertificates.Add(_certificate);
-        handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
-#endif
+            if (certsItem1 == null) return handler;
+            handler.ClientCertificates.Add(certsItem1);
+            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
             return handler;
         };
         return new KurrentDBClient(ConnectionSettings);
-    }
-
-    public LinkerConnectionBuilder(KurrentDBClientSettings connectionSettings, string connectionName)
-    {
-        ConnectionSettings = connectionSettings;
-        ConnectionName = connectionName;
     }
 }

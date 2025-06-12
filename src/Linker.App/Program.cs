@@ -36,6 +36,7 @@ static class Program
             ILinkerConnectionBuilder destination = null;
             _logger.LogInformation(
                 $"Global settings loaded: MaxBufferSize={settings.MaxBufferSize}, HandleConflicts={settings.HandleConflicts}");
+            var certManager = new CertManager(_loggerFactory.CreateLogger(nameof(CertManager)));
             foreach (var link in links)
             {
                 if (link.Filters == null || !link.Filters.Any())
@@ -47,12 +48,14 @@ static class Program
 
                 var filters = link.Filters.Select(linkFilter => new Filter(linkFilter.FilterType, linkFilter.Value, linkFilter.FilterOperation)).ToList();
                 var filterService = new FilterService(filters);
+                certManager.TryGetCertificate(link.Origin.Certificate, link.Origin.CertificatePrivateKey, out var originCert);
+                certManager.TryGetCertificate(link.Destination.Certificate, link.Destination.CertificatePrivateKey, out var destinationCert);
                 var o = new LinkerConnectionBuilder(
                     KurrentDBClientSettings.Create(link.Origin.ConnectionString),
-                    link.Origin.ConnectionName);
+                    link.Origin.ConnectionName, originCert);
                 var d = new LinkerConnectionBuilder(
                     KurrentDBClientSettings.Create(link.Destination.ConnectionString),
-                    link.Destination.ConnectionName);
+                    link.Destination.ConnectionName, destinationCert);
                 origin ??= o;
                 destination ??= d;
                 var service = new LinkerService(o, d,
@@ -71,29 +74,29 @@ static class Program
                 switch (key.Key)
                 {
                     case ConsoleKey.O:
-                    {
-                        _logger.LogInformation($"Write the {origin.ConnectionName} stream name");
-                        var stream = Console.ReadLine();
-                        _logger.LogInformation($"Write the {origin.ConnectionName} event Type");
-                        var eventType = Console.ReadLine();
-                        await AppendTestEvent(stream, eventType, origin);
-                        break;
-                    }
+                        {
+                            _logger.LogInformation($"Write the {origin.ConnectionName} stream name");
+                            var stream = Console.ReadLine();
+                            _logger.LogInformation($"Write the {origin.ConnectionName} event Type");
+                            var eventType = Console.ReadLine();
+                            await AppendTestEvent(stream, eventType, origin);
+                            break;
+                        }
                     case ConsoleKey.D:
-                    {
-                        _logger.LogInformation($"Write the {destination.ConnectionName} stream name");
-                        var stream = Console.ReadLine();
-                        _logger.LogInformation($"Write the {destination.ConnectionName} event Type");
-                        var eventType = Console.ReadLine();
-                        await AppendTestEvent(stream, eventType, destination);
-                        break;
-                    }
+                        {
+                            _logger.LogInformation($"Write the {destination.ConnectionName} stream name");
+                            var stream = Console.ReadLine();
+                            _logger.LogInformation($"Write the {destination.ConnectionName} event Type");
+                            var eventType = Console.ReadLine();
+                            await AppendTestEvent(stream, eventType, destination);
+                            break;
+                        }
                 }
             }
         }
         catch (Exception e)
         {
-            _logger.LogError(e.GetBaseException().Message);
+            _logger.LogError(e, "Fatal error");
         }
         finally
         {

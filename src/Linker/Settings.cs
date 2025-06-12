@@ -31,10 +31,14 @@ public class Origin
 {
     public required string ConnectionString { get; set; }
     public required string ConnectionName { get; set; }
+    public string? Certificate { get; set; }
+    public string? CertificatePrivateKey { get; set; }
 }
 
 public class Destination
 {
     public required string ConnectionString { get; set; }
     public required string ConnectionName { get; set; }
+    public string? Certificate { get; set; }
+    public string? CertificatePrivateKey { get; set; }
 }
