@@ -361,7 +361,12 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                     if (eventNumber == lastEventNumber + 1)
                         expectedRevision = StreamState.StreamRevision(lastEventNumber);
                     else
+                    {
+                        if (evt.StreamId.StartsWith("$$"))
+                            // this is a delete stream/event that it has maxnum constraint set
+                            return;
                         throw new InvalidOperationException($"Out-of-order event detected in {evt.StreamId}. Expected {lastEventNumber + 1}, got {eventNumber}.");
+                    }
                 }
                 else if (eventNumber == 0)
                     expectedRevision = StreamState.NoStream;

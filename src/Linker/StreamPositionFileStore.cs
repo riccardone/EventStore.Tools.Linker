@@ -15,6 +15,10 @@ public class StreamPositionFileStore
 
     public async Task<IDictionary<string, ulong>> LoadAsync()
     {
+        var directory = Path.GetDirectoryName(_filePath);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory); // Creates the folder if it doesn't exist
+
         if (!File.Exists(_filePath))
             return new Dictionary<string, ulong>();
 
