@@ -39,8 +39,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private long _replicatedTotal;
 
     private readonly double _currentBackpressureThreshold = 0.8;
-    private readonly List<long> _latencySamples = new();
-    private readonly List<long> _replicationSamples = new();
+    private readonly List<long> _latencySamples = [];
+    private readonly List<long> _replicationSamples = [];
     private readonly Lock _adaptiveLock = new();
     private int _bufferSize;
     private int _adaptiveIntervalCounter;
@@ -437,6 +437,9 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private async Task<ResolvedEvent?> GetLastEventFromAStreamAsync(string streamId)
     {
+        if (_destinationConnection == null)
+            throw new InvalidOperationException("Destination connection not initialised yet.");
+
         var readResult = _destinationConnection.ReadStreamAsync(Direction.Backwards, streamId, StreamPosition.End, 1);
         ResolvedEvent last = default;
         await foreach (var e in readResult) { last = e; break; }
