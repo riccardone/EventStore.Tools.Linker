@@ -2,16 +2,23 @@
 
 namespace Linker;
 
-public class StreamPositionFileStore(string filePath)
+public class StreamPositionFileStore
 {
-    private readonly object _fileLock = new();
+    private readonly string _filePath;
+    private readonly Lock _fileLock = new();
+
+    public StreamPositionFileStore(string folderPath, string fileName)
+    {
+        Directory.CreateDirectory(folderPath); // Ensure the folder exists
+        _filePath = Path.Combine(folderPath, fileName);
+    }
 
     public async Task<IDictionary<string, ulong>> LoadAsync()
     {
-        if (!File.Exists(filePath))
+        if (!File.Exists(_filePath))
             return new Dictionary<string, ulong>();
 
-        using var stream = File.OpenRead(filePath);
+        using var stream = File.OpenRead(_filePath);
         var positions = await JsonSerializer.DeserializeAsync<Dictionary<string, ulong>>(stream);
         return positions ?? new Dictionary<string, ulong>();
     }
@@ -22,9 +29,9 @@ public class StreamPositionFileStore(string filePath)
 
         lock (_fileLock)
         {
-            if (File.Exists(filePath))
+            if (File.Exists(_filePath))
             {
-                var json = File.ReadAllText(filePath);
+                var json = File.ReadAllText(_filePath);
                 positions = JsonSerializer.Deserialize<Dictionary<string, ulong>>(json) ?? new();
             }
             else
@@ -33,7 +40,7 @@ public class StreamPositionFileStore(string filePath)
             }
 
             positions[streamId] = position;
-            File.WriteAllText(filePath, JsonSerializer.Serialize(positions));
+            File.WriteAllText(_filePath, JsonSerializer.Serialize(positions));
         }
     }
 
@@ -44,6 +51,6 @@ public class StreamPositionFileStore(string filePath)
             WriteIndented = true
         });
 
-        return File.WriteAllTextAsync(filePath, json);
+        return File.WriteAllTextAsync(_filePath, json);
     }
 }

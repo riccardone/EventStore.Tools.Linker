@@ -2,6 +2,7 @@
 
 public class Settings
 {
+    public string DataFolder { get; set; }
     public bool AutomaticTuning { get; set; } = true;
     public int BufferSize { get; set; } = 10;
     public bool HandleConflicts { get; set; } = true;

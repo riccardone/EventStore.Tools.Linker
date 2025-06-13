@@ -33,8 +33,14 @@ static class Program
             var settings = new Settings();
             config.Bind(settings);
             settings.BufferSize = Math.Clamp(settings.BufferSize, LinkerService.MinAllowedBuffer, LinkerService.MaxAllowedBuffer);
-            _logger.LogInformation(
-                $"Global settings loaded: AutomaticTuning={settings.AutomaticTuning}, BufferSize={settings.BufferSize}, ResolveLinkTos={settings.ResolveLinkTos}, HandleConflicts={settings.HandleConflicts}");
+            _logger.LogInformation($"""
+                                    Global settings loaded:
+                                      DataFolder       = {settings.DataFolder}
+                                      AutomaticTuning  = {settings.AutomaticTuning}
+                                      BufferSize       = {settings.BufferSize}
+                                      ResolveLinkTos   = {settings.ResolveLinkTos}
+                                      HandleConflicts  = {settings.HandleConflicts}
+                                    """);
             ILinkerConnectionBuilder origin = null;
             ILinkerConnectionBuilder destination = null;
             var certManager = new CertManager(_loggerFactory.CreateLogger(nameof(CertManager)));

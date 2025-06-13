@@ -71,7 +71,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _filterService = filterService;
         _settings = settings;
         _bufferSize = Math.Clamp(settings.BufferSize, MinAllowedBuffer, MaxAllowedBuffer);
-        _streamFileStore = new StreamPositionFileStore(Path.Combine(AppContext.BaseDirectory, "stream_positions.json"));
+        _streamFileStore = new StreamPositionFileStore(Path.Combine(settings.DataFolder, "positions"), $"stream_positions_{Name}.json");
 
         _channel = CreateNewChannel(_bufferSize);
 
@@ -199,7 +199,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             }
         }
 
-        _logger.LogInformation($"{Name}: ReconcileStreamPositions completed. Total streams processed: {total}");
+        _logger.LogInformation($"{Name}: ReconcileStreamPositions completed. Total streams reconciliations processed: {total}");
     }
 
     public async Task<bool> StopAsync()
@@ -502,6 +502,12 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 _adaptiveIntervalCounter = 0;
                 var average = _replicationSamples.Average();
                 var previous = _replicationSamples.Take(4).Average();
+
+                if (average == 0 && previous == 0)
+                {
+                    _logger.LogInformation($"{Name} adaptive tuning skipped: no replication activity. Current BufferSize={_bufferSize}");
+                    return;
+                }
 
                 var percentChange = previous == 0 ? 1 : (average - previous) / previous;
                 var proposed = _bufferSize;
