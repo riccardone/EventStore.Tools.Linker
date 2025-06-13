@@ -4,9 +4,42 @@
 This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/)
 
 ![image](https://github.com/user-attachments/assets/387137d2-a65e-4a19-a96f-e3ab57c58543)
+Configure the origin and the destination of the data replication. Eact Link is between Origin and Destination. It is possible run multiple links at the same time for complex scenarios. To enforce ordering in the destination db Linker save stream positions on disk in a folder called data per default. Path is configurable as a setting if needed.
 
 # Configuration Modes
-This app make use of the appsettings.json file to configure Linked EventStore's. You can have as many Links as you need and as your running machine allow you to run. Even when you are replicating at full speed, the Linker logic make use of **backpressure** tecnique in order to not take the full amount of CPU and Memory available.  
+This app make use of the appsettings.json file to configure Linked KurrentDb's. 
+You can have as many Links as you need and as your running machine allow you to run. Even when you are replicating at full speed, the Linker logic make use of **backpressure** tecnique in order to not take the full amount of CPU and Memory available.  
+
+The following properties can be configured in the root of your appsettings.json file. If not set, the default values shown will be used:
+```
+{
+  "DataFolder": "data",               // Folder used to store stream position files
+  "AutomaticTuning": true,           // Enables or disables dynamic buffer size tuning
+  "BufferSize": 100,                 // Initial size of the bounded buffer channel
+  "HandleConflicts": true,           // Enables appending conflicts to a special stream instead of failing
+  "ResolveLinkTos": false,           // Whether to resolve $> link events in EventStore
+  "Links": []                        // List of replication links (see examples below)
+}
+```
+
+Each Link object defines one replication pair:
+```
+{
+  "origin": {
+    "connectionString": "esdb://...",
+    "connectionName": "db01",
+    "certificate": null,            // Optional client certificate (PEM format)
+    "certificatePrivateKey": null   // Optional private key for the certificate
+  },
+  "destination": {
+    "connectionString": "esdb://...",
+    "connectionName": "db02",
+    "certificate": null,
+    "certificatePrivateKey": null
+  },
+  "filters": []                      // Optional list of filters (see filter section)
+}
+```
 
 ## Active-Passive
 One instance is the origin, the other instance is the destination. To configure a simple link with a filter excluding one specific stream:
@@ -69,16 +102,12 @@ Configure two links swapping the same Origin and Destination for a **multi maste
   ]
 }
 ```
-
 ## Fan-Out
 Configure the same Origin in separate Links replicating data to different destination for a **Fan-Out** solution.  
 
 ## Fan-In
 You can have separate Links with different Origins linked with the same Destination for a **Fan-In** solution. 
-
-# Simplest example usage
-To use the LinkerService you pass the origin and the destination of the data replication. Eact LinkerService is a link between Origin and Destination. It is possible run multiple LinkerService's for complex scenarios. The Position of the replica can be saved on both sides but it's better to save it on the destination. If you want to control where to save the position you can build your PositionRepository and pass it to the LinkerService.
-  
+ 
 # Use filters 
 Without filters, all the user data will be replicated from the Origin to the linked Destination. When you add an exclude filter you must also add at least an include filter to include what else can be replicated.
 
