@@ -1,4 +1,4 @@
-# Base runtime image
+# Base runtime
 FROM mcr.microsoft.com/dotnet/runtime:9.0 AS base
 WORKDIR /app
 
@@ -7,13 +7,13 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
-# Copy project files
-COPY Linker.App/Linker.App.csproj Linker.App/
-COPY Linker/Linker.csproj Linker/
+# Fix the paths for COPY
+COPY src/Linker.App/Linker.App.csproj Linker.App/
+COPY src/Linker/Linker.csproj Linker/
 RUN dotnet restore Linker.App/Linker.App.csproj
 
-# Copy the rest of the source
-COPY . .
+# Copy all source code
+COPY src/ .
 
 # Build
 WORKDIR /src/Linker.App
