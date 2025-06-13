@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 {
     private readonly ILogger _logger;
     private readonly IPositionRepository _positionRepository;
+    private readonly StreamPositionFileStore _streamFileStore;
     private readonly IFilterService? _filterService;
     private readonly Settings _settings;
     private Position _lastPosition;
@@ -48,6 +50,9 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     public const int MaxAllowedBuffer = 1000;
     public const int MinAllowedBuffer = 1;
 
+    private readonly ConcurrentDictionary<string, SortedDictionary<ulong, BufferedEvent>> _perStreamBuffers = new();
+    private readonly ConcurrentDictionary<string, ulong> _lastWrittenPerStream = new();
+
     public LinkerService(
         ILinkerConnectionBuilder originBuilder,
         ILinkerConnectionBuilder destinationBuilder,
@@ -66,6 +71,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _filterService = filterService;
         _settings = settings;
         _bufferSize = Math.Clamp(settings.BufferSize, MinAllowedBuffer, MaxAllowedBuffer);
+        _streamFileStore = new StreamPositionFileStore(Path.Combine(AppContext.BaseDirectory, "stream_positions.json"));
 
         _channel = CreateNewChannel(_bufferSize);
 
@@ -125,10 +131,15 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         await StopAsync();
 
         if (!_positionRepository.TryGet(out _lastPosition))
-            throw new Exception("Error retriev position");
+            _lastPosition = Position.Start;
+
+        if (_lastPosition.Equals(Position.Start))
+            _logger.LogInformation("No last position found. Starting from Position.Start");
 
         _destinationConnection = _destinationConnectionBuilder.Build();
         _originConnection = _originConnectionBuilder.Build();
+
+        await ReconcileStreamPositions();
 
         _started = true;
 
@@ -140,6 +151,55 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _logger.LogInformation($"{Name} started.");
 
         return true;
+    }
+
+    private async Task ReconcileStreamPositions()
+    {
+        var streamPositions = await _streamFileStore.LoadAsync();
+        int total = streamPositions.Count;
+        int current = 0;
+
+        var stopwatch = Stopwatch.StartNew();
+        var lastLogTime = TimeSpan.Zero;
+
+        foreach (var kvp in streamPositions)
+        {
+            current++;
+            var streamId = kvp.Key;
+
+            try
+            {
+                var last = await GetLastEventFromAStreamAsync(streamId);
+                if (last is { OriginalEvent: not null }) // if null stream has been deleted
+                {
+                    var lastNum = last.Value.OriginalEventNumber.ToUInt64();
+                    _lastWrittenPerStream[streamId] = lastNum;
+                }
+                else
+                {
+                    _lastWrittenPerStream[streamId] = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                _lastWrittenPerStream[streamId] = kvp.Value;
+
+                var last = await GetLastEventFromAStreamAsync($"$${streamId}");
+                if (last.HasValue)
+                    continue; // stream has been deleted
+
+                _logger.LogWarning(ex, $"{Name}: Could not read {streamId} from destination. Using fallback value {kvp.Value}");
+            }
+
+            // Log progress every 5 seconds
+            if (stopwatch.Elapsed - lastLogTime >= TimeSpan.FromSeconds(5))
+            {
+                lastLogTime = stopwatch.Elapsed;
+                _logger.LogInformation($"{Name}: Reconciliation progress {current}/{total} streams ({(current * 100 / total)}%)");
+            }
+        }
+
+        _logger.LogInformation($"{Name}: ReconcileStreamPositions completed. Total streams processed: {total}");
     }
 
     public async Task<bool> StopAsync()
@@ -160,6 +220,17 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             try { await _processingTask; } catch (OperationCanceledException) { }
             _processingTask = null;
+        }
+
+        try
+        {
+            await _streamFileStore.SaveAllAsync(_lastWrittenPerStream
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+            _logger.LogInformation($"{Name}: Stream positions flushed on shutdown.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, $"{Name}: Failed to flush stream positions on shutdown.");
         }
 
         await DisposeConnectionsAsync();
@@ -183,7 +254,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             await foreach (var evt in _channel.Reader.ReadAllAsync(_cts.Token))
             {
-                await AppendEventAsync(evt);
+                await ProcessBufferedEvent(evt);
             }
         }
         catch (OperationCanceledException) { }
@@ -191,6 +262,26 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             _logger.LogError($"Channel processing error: {ex.GetBaseException().Message}");
             await RestartServiceAsync();
+        }
+    }
+
+    private async Task ProcessBufferedEvent(BufferedEvent evt)
+    {
+        var streamId = evt.StreamId;
+        var eventNum = evt.EventNumber.ToUInt64();
+
+        var buffer = _perStreamBuffers.GetOrAdd(streamId, _ => new SortedDictionary<ulong, BufferedEvent>());
+        buffer[eventNum] = evt;
+
+        _lastWrittenPerStream.TryGetValue(streamId, out var lastWritten);
+        var expected = lastWritten == 0 && !_lastWrittenPerStream.ContainsKey(streamId) ? 0 : lastWritten + 1;
+
+        while (buffer.TryGetValue(expected, out var next))
+        {
+            await AppendEventAsync(next);
+            _lastWrittenPerStream[streamId] = expected;
+            buffer.Remove(expected);
+            expected++;
         }
     }
 
@@ -234,6 +325,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             _lastPosition = evt.OriginalPosition.Value;
             _positionRepository.Set(_lastPosition);
+            _logger.LogDebug($"{Name}: Updated global last position to {_lastPosition}");
             return;
         }
 
@@ -253,8 +345,44 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         try
         {
             var sw = Stopwatch.StartNew();
-            await _destinationConnection.AppendToStreamAsync(evt.StreamId,
-                StreamState.StreamRevision(evt.EventNumber.ToUInt64() - 1), [evt.EventData]);
+
+            StreamState expectedRevision;
+            ulong eventNumber = evt.EventNumber.ToUInt64();
+
+            try
+            {
+                var readResult = _destinationConnection.ReadStreamAsync(Direction.Backwards, evt.StreamId, StreamPosition.End, 1);
+                ResolvedEvent? lastEvent = null;
+                await foreach (var e in readResult) { lastEvent = e; break; }
+
+                if (lastEvent is not null)
+                {
+                    var lastEventNumber = lastEvent.Value.OriginalEventNumber.ToUInt64();
+                    if (eventNumber == lastEventNumber + 1)
+                        expectedRevision = StreamState.StreamRevision(lastEventNumber);
+                    else
+                        throw new InvalidOperationException($"Out-of-order event detected in {evt.StreamId}. Expected {lastEventNumber + 1}, got {eventNumber}.");
+                }
+                else if (eventNumber == 0)
+                    expectedRevision = StreamState.NoStream;
+                else
+                    throw new InvalidOperationException($"Cannot append event {eventNumber} to empty stream.");
+            }
+            catch (StreamNotFoundException)
+            {
+                if (eventNumber == 0)
+                    expectedRevision = StreamState.NoStream;
+                else
+                    throw new InvalidOperationException($"Event {eventNumber} cannot be appended to missing stream.");
+            }
+
+            if (expectedRevision == StreamState.Any)
+            {
+                _logger.LogError($"{Name}: Refusing to append with {nameof(StreamState.Any)} to stream {evt.StreamId} (event #{evt.EventNumber}) — this is unsafe for replication.");
+                throw new InvalidOperationException($"Unsafe replication state: {nameof(StreamState.Any)} should not be used during normal replication.");
+            }
+
+            await _destinationConnection.AppendToStreamAsync(evt.StreamId, expectedRevision, new[] { evt.EventData });
             sw.Stop();
 
             lock (_latencySamples)
@@ -262,16 +390,57 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 _latencySamples.Add(sw.ElapsedMilliseconds);
                 if (_latencySamples.Count > 100) _latencySamples.RemoveAt(0);
             }
+
             _lastPosition = evt.OriginalPosition;
             _positionRepository.Set(_lastPosition);
+
+            // not necesary as we flush all positions on shutdown
+            //await _streamFileStore.SaveAsync(evt.StreamId, eventNumber);
+
             Interlocked.Increment(ref _replicatedSinceLastStats);
             Interlocked.Increment(ref _replicatedTotal);
         }
         catch (WrongExpectedVersionException ex)
         {
             if (!_settings.HandleConflicts || !await HandleConflictAsync(evt, ex))
-                _logger.LogWarning($"Conflict handling failed: {ex.Message}");
+            {
+                _logger.LogError($"Conflict handling failed: Stream: {evt.StreamId}, EventNumber: {evt.EventNumber}, Error: {ex.Message}");
+                throw new InvalidOperationException("Replication halted due to unrecoverable conflict error.");
+            }
         }
+    }
+
+    //private async Task<StreamState> HandleStreamPositionNotMatchingAsync(BufferedEvent evt, ulong eventNumber, ulong lastEventNumber)
+    //{
+    //    StreamState expectedRevision;
+    //    var streamId = evt.StreamId;
+    //    var last = await GetLastEventFromAStreamAsync(streamId);
+
+    //    if (last.HasValue)
+    //    {
+    //        var lastNum = last.Value.OriginalEventNumber.ToUInt64();
+    //        _lastWrittenPerStream[streamId] = lastNum;
+    //        if (eventNumber != lastNum && !streamId.StartsWith("$$"))
+    //            throw new InvalidOperationException($"Out-of-order event detected in {evt.StreamId}. Expected {lastEventNumber + 1}, got {eventNumber}.");
+    //        expectedRevision = StreamState.StreamRevision(lastEventNumber);
+    //        _logger.LogInformation($"{Name}: Initialized {streamId} from destination with value {lastNum}");
+    //    }
+    //    else
+    //    {
+    //        _lastWrittenPerStream[streamId] = 0;
+    //        expectedRevision = StreamState.StreamRevision(0);
+    //        _logger.LogWarning($"{Name}: Stream {streamId} was empty on destination. Assuming 0.");
+    //    }
+
+    //    return expectedRevision;
+    //}
+
+    private async Task<ResolvedEvent?> GetLastEventFromAStreamAsync(string streamId)
+    {
+        var readResult = _destinationConnection.ReadStreamAsync(Direction.Backwards, streamId, StreamPosition.End, 1);
+        ResolvedEvent last = default;
+        await foreach (var e in readResult) { last = e; break; }
+        return last;
     }
 
     private async Task<bool> HandleConflictAsync(BufferedEvent evt, WrongExpectedVersionException ex)
@@ -293,11 +462,13 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 new EventData(evt.EventData.EventId, evt.EventData.Type, evt.EventData.Data,
                     _replicaHelper.SerializeObject(metadata))
             });
+            Interlocked.Increment(ref _replicatedSinceLastStats);
+            Interlocked.Increment(ref _replicatedTotal);
             return true;
         }
         catch (Exception innerEx)
         {
-            _logger.LogError($"Conflict append failed: {innerEx.Message}");
+            _logger.LogError(innerEx, $"Conflict append failed: {innerEx.Message}");
             return false;
         }
     }
@@ -330,25 +501,30 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 var previous = _replicationSamples.Take(4).Average();
 
                 var percentChange = previous == 0 ? 1 : (average - previous) / previous;
-                int proposed = _bufferSize;
+                var proposed = _bufferSize;
 
-                int delta = Math.Max(1, (int)Math.Round(_bufferSize * _allowedIncreaseOrDecreaseAmount));
-
-                if (percentChange >= _significantIncreaseToTriggerIncrease)
+                if (_settings.AutomaticTuning)
                 {
-                    // Steady or improving: increase buffer
-                    proposed = Math.Min(MaxAllowedBuffer, _bufferSize + delta);
-                }
-                else if (percentChange < _significantRegressionToTriggerDecrease)
-                {
-                    // Significant regression: decrease buffer
-                    proposed = Math.Max(MinAllowedBuffer, _bufferSize - delta);
-                }
+                    var delta = Math.Max(1, (int)Math.Round(_bufferSize * _allowedIncreaseOrDecreaseAmount));
 
-                if (proposed != _bufferSize)
-                    _ = ResizeChannelAsync(proposed);
+                    if (percentChange >= _significantIncreaseToTriggerIncrease)
+                    {
+                        // Steady or improving: increase buffer
+                        proposed = Math.Min(MaxAllowedBuffer, _bufferSize + delta);
+                    }
+                    else if (percentChange < _significantRegressionToTriggerDecrease)
+                    {
+                        // Significant regression: decrease buffer
+                        proposed = Math.Max(MinAllowedBuffer, _bufferSize - delta);
+                    }
 
-                _logger.LogInformation($"{Name} adaptive tuning: prevAvg={previous:F1}, currentAvg={average:F1}, proposed bufferSize={proposed}, change={percentChange:P1}");
+                    if (proposed != _bufferSize)
+                        _ = ResizeChannelAsync(proposed);
+
+                    _logger.LogInformation($"{Name} adaptive tuning: prevAvg={previous:F1}, currentAvg={average:F1}, proposed bufferSize={proposed}, change={percentChange:P1}");
+                }
+                else
+                    _logger.LogInformation($"{Name} prevAvg={previous:F1}, currentAvg={average:F1}, bufferSize={proposed}, change={percentChange:P1}");
             }
         }
 
@@ -380,3 +556,5 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _timerForStats.Dispose();
     }
 }
+
+

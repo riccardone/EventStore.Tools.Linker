@@ -2,6 +2,7 @@
 
 public class Settings
 {
+    public bool AutomaticTuning { get; set; } = true;
     public int BufferSize { get; set; } = 10;
     public bool HandleConflicts { get; set; } = true;
     public bool ResolveLinkTos { get; set; } = false;
