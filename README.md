@@ -149,7 +149,7 @@ Following is an example of building the LinkerService with a couple of Include f
             service.Start().Wait();
 ```
 # Backpressure and performances 
-One of the problem that this tool solves is related to the lack of built-in backpressure management in the EventStore client's and api's. Running the replication with this program, the logic will continuosly adapt the network settings depending on the number of events being replicated.
+One of the problem that this tool solves is related to the lack of built-in backpressure management in the KurrentDb client's and api's. Running the replication with this program, the logic will continuosly adapt the network settings depending on the number of events being replicated. To dynamically adapt the backpressure, make sure to set the AutomaticTuning=true setting. If you set it to false, the buffersize will be kept the same. This is still back pressure with the difference that it's not dynamically adapting.
 
 # KurrentDb
 The database being replicated is KurrentDb https://github.com/kurrent-io/KurrentDB 
