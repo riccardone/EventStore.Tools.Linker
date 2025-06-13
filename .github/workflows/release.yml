@@ -57,7 +57,7 @@ jobs:
             --api-key $GITHUB_TOKEN \
             --source "https://nuget.pkg.github.com/${OWNER}/index.json" \
             --skip-duplicate \;
-      
+
       - name: Publish for Linux (linux-x64)
         run: dotnet publish src/Linker.App/Linker.App.csproj -c Release -r linux-x64 --self-contained true -o out-linux
 
@@ -65,8 +65,8 @@ jobs:
         run: dotnet publish src/Linker.App/Linker.App.csproj -c Release -r win-x64 --self-contained true -o out-win
 
       - name: Publish for macOS ARM (osx-arm64)
-        run: dotnet publish src/Linker.App/ALinker.App.csproj -c Release -r osx-arm64 --self-contained true -o out-macos
-      
+        run: dotnet publish src/Linker.App/Linker.App.csproj -c Release -r osx-arm64 --self-contained true -o out-macos
+
       - name: Archive Linux build
         run: zip -r linker-app-linux-x64.zip out-linux
 
@@ -75,6 +75,22 @@ jobs:
 
       - name: Archive macOS build
         run: zip -r linker-app-osx-arm64.zip out-macos
+
+      # ⬇️ NEW STEP: Docker Build & Push
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          IMAGE_NAME=${{ secrets.DOCKERHUB_USERNAME }}/linker
+          docker build -t $IMAGE_NAME:$VERSION -t $IMAGE_NAME:latest -f src/Linker.App/Dockerfile .
+          docker push $IMAGE_NAME:$VERSION
+          docker push $IMAGE_NAME:latest
 
       - name: Generate release notes
         id: changelog
