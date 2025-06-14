@@ -1,8 +1,8 @@
-﻿using System.Collections.Concurrent;
-using System.Diagnostics;
-using EventStore.PositionRepository.Gprc;
+﻿using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 using System.Timers;
 using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
@@ -14,7 +14,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 {
     private readonly ILogger _logger;
     private readonly IPositionRepository _positionRepository;
-    private readonly StreamPositionFileStore _streamFileStore;
+    private readonly IStreamPositionFlusher _flusherForStreamPositions;
     private readonly IFilterService? _filterService;
     private readonly Settings _settings;
     private Position _lastPosition;
@@ -52,6 +52,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private readonly ConcurrentDictionary<string, SortedDictionary<ulong, BufferedEvent>> _perStreamBuffers = new();
     private readonly ConcurrentDictionary<string, ulong> _lastWrittenPerStream = new();
+    private readonly HashSet<string> _streamsToBeExcluded;
 
     public LinkerService(
         ILinkerConnectionBuilder originBuilder,
@@ -62,7 +63,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger(nameof(LinkerService));
-        Name = $"Replica From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
+        Name = $"From-{originBuilder.ConnectionName}-To-{destinationBuilder.ConnectionName}";
 
         _originConnectionBuilder = originBuilder;
         _destinationConnectionBuilder = destinationBuilder;
@@ -71,11 +72,17 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _filterService = filterService;
         _settings = settings;
         _bufferSize = Math.Clamp(settings.BufferSize, MinAllowedBuffer, MaxAllowedBuffer);
-        _streamFileStore = new StreamPositionFileStore(Path.Combine(settings.DataFolder, "positions"), $"stream_positions_{Name}.json");
 
-        _channel = CreateNewChannel(_bufferSize);
-
+        var streamPositionsPath = Path.Combine(settings.DataFolder, "positions", $"stream_positions_{Name}.json");
+        _flusherForStreamPositions = new PeriodicStreamPositionFlusher(streamPositionsPath, loggerFactory.CreateLogger("Flusher"));
+        
         _replicaHelper = new LinkerHelper();
+
+        _streamsToBeExcluded = new HashSet<string>
+        {
+            $"PositionStream-{_originConnectionBuilder.ConnectionName}",
+            $"$$PositionStream-{_originConnectionBuilder.ConnectionName}"
+        };
 
         _timerForStats = new System.Timers.Timer(3000);
         _timerForStats.Elapsed += TimerForStats_Elapsed;
@@ -120,6 +127,12 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         foreach (var evt in buffered)
             await _channel.Writer.WriteAsync(evt);
 
+        StartWorkerTasks();
+    }
+
+    private void StartWorkerTasks()
+    {
+        _logger.LogDebug($"{Name}: Starting background tasks...");
         _processingTask = Task.Run(ProcessChannelEventsAsync);
         _subscriptionTask = SubscribeMeGrpc(_cts.Token);
     }
@@ -139,14 +152,17 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _destinationConnection = _destinationConnectionBuilder.Build();
         _originConnection = _originConnectionBuilder.Build();
 
+        await _flusherForStreamPositions.StartAsync();
+
         await ReconcileStreamPositions();
 
         _started = true;
 
-        _processingTask = Task.Run(ProcessChannelEventsAsync);
-        _subscriptionTask = SubscribeMeGrpc(_cts.Token);
-
         _timerForStats.Start();
+
+        _channel = CreateNewChannel(_bufferSize);
+
+        StartWorkerTasks();
 
         _logger.LogInformation($"{Name} started.");
 
@@ -155,7 +171,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private async Task ReconcileStreamPositions()
     {
-        var streamPositions = await _streamFileStore.LoadAsync();
+        var streamPositions = await _flusherForStreamPositions.LoadAsync();
         int total = streamPositions.Count;
         int current = 0;
 
@@ -166,23 +182,23 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             current++;
             var streamId = kvp.Key;
+            ulong recoveredPosition;
 
             try
             {
                 var last = await GetLastEventFromAStreamAsync(streamId);
-                if (last is { OriginalEvent: not null }) // if null stream has been deleted
+                if (last is { OriginalEvent: not null })
                 {
-                    var lastNum = last.Value.OriginalEventNumber.ToUInt64();
-                    _lastWrittenPerStream[streamId] = lastNum;
+                    recoveredPosition = last.Value.OriginalEventNumber.ToUInt64();
                 }
                 else
                 {
-                    _lastWrittenPerStream[streamId] = 0;
+                    recoveredPosition = 0;
                 }
             }
             catch (Exception ex)
             {
-                _lastWrittenPerStream[streamId] = kvp.Value;
+                recoveredPosition = kvp.Value;
 
                 var last = await GetLastEventFromAStreamAsync($"$${streamId}");
                 if (last.HasValue)
@@ -191,7 +207,9 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 _logger.LogWarning(ex, $"{Name}: Could not read {streamId} from destination. Using fallback value {kvp.Value}");
             }
 
-            // Log progress every 5 seconds
+            _lastWrittenPerStream[streamId] = recoveredPosition;
+            _flusherForStreamPositions.Update(streamId, recoveredPosition);
+
             if (stopwatch.Elapsed - lastLogTime >= TimeSpan.FromSeconds(5))
             {
                 lastLogTime = stopwatch.Elapsed;
@@ -222,16 +240,18 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             _processingTask = null;
         }
 
-        try
-        {
-            await _streamFileStore.SaveAllAsync(_lastWrittenPerStream
-                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
-            _logger.LogInformation($"{Name}: Stream positions flushed on shutdown.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, $"{Name}: Failed to flush stream positions on shutdown.");
-        }
+        await _flusherForStreamPositions.StopAsync();
+
+        //try
+        //{
+        //    await _streamFileStore.SaveAllAsync(_lastWrittenPerStream
+        //        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+        //    _logger.LogInformation($"{Name}: Stream positions flushed on shutdown.");
+        //}
+        //catch (Exception ex)
+        //{
+        //    _logger.LogWarning(ex, $"{Name}: Failed to flush stream positions on shutdown.");
+        //}
 
         await DisposeConnectionsAsync();
 
@@ -250,17 +270,19 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private async Task ProcessChannelEventsAsync()
     {
+        _logger.LogDebug($"{Name}: Channel processing started");
         try
         {
             await foreach (var evt in _channel.Reader.ReadAllAsync(_cts.Token))
             {
+                _logger.LogDebug($"{Name}: Dequeued {evt.EventNumber}@{evt.StreamId}");
                 await ProcessBufferedEvent(evt);
             }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            _logger.LogError($"Channel processing error: {ex.GetBaseException().Message}");
+            _logger.LogError(ex, $"{Name}: Channel processing error: {ex.GetBaseException().Message}");
             await RestartServiceAsync();
         }
     }
@@ -273,13 +295,25 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         var buffer = _perStreamBuffers.GetOrAdd(streamId, _ => new SortedDictionary<ulong, BufferedEvent>());
         buffer[eventNum] = evt;
 
-        _lastWrittenPerStream.TryGetValue(streamId, out var lastWritten);
-        var expected = lastWritten == 0 && !_lastWrittenPerStream.ContainsKey(streamId) ? 0 : lastWritten + 1;
+        ulong expected;
+        if (_lastWrittenPerStream.TryGetValue(streamId, out var lastWritten))
+            expected = lastWritten + 1;
+        else
+            expected = 0;
+
+        _logger.LogDebug($"{Name}: LastWritten={lastWritten}, Expected={expected}, BufferCount={buffer.Count}");
+        _logger.LogDebug($"{Name}: Buffer keys: {string.Join(",", buffer.Keys)}");
+        if (!buffer.ContainsKey(expected))
+            _logger.LogWarning($"{Name}: Missing expected event {expected}@{streamId}, can't append");
 
         while (buffer.TryGetValue(expected, out var next))
         {
             await AppendEventAsync(next);
             _lastWrittenPerStream[streamId] = expected;
+            _flusherForStreamPositions.Update(streamId, expected);
+            // Force flush immediately after the first event in a new stream
+            if (expected == 0)
+                await _flusherForStreamPositions.FlushAsync(); 
             buffer.Remove(expected);
             expected++;
         }
@@ -312,16 +346,21 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         if (evt.Event == null || !evt.OriginalPosition.HasValue)
             return;
 
-        if (!_replicaHelper.IsValidForReplica(evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition.Value, _positionRepository.PositionEventType, _filterService))
+        var metadata = _replicaHelper.DeserializeObject(evt.Event.Metadata);
+
+        if (!_replicaHelper.IsValidForReplica(evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition.Value,
+                _positionRepository.PositionEventType, _filterService, _streamsToBeExcluded, metadata,
+                _destinationConnectionBuilder.ConnectionName))
         {
+            _logger.LogDebug($"{Name}: Skipping event {evt.OriginalEventNumber}@{evt.OriginalStreamId} - Not valid for replication");
             _lastPosition = evt.OriginalPosition.Value;
             return;
         }
 
         if (!_replicaHelper.TryProcessMetadata(evt.Event.EventStreamId, evt.Event.EventNumber, evt.Event.Created,
-            _originConnectionBuilder.ConnectionName,
-            _replicaHelper.DeserializeObject(evt.Event.Metadata),
-            out var enrichedMetadata))
+                _originConnectionBuilder.ConnectionName,
+                _replicaHelper.DeserializeObject(evt.Event.Metadata),
+                out var enrichedMetadata))
         {
             _lastPosition = evt.OriginalPosition.Value;
             _positionRepository.Set(_lastPosition);
@@ -340,70 +379,67 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private async Task AppendEventAsync(BufferedEvent evt)
     {
         if (_destinationConnection == null)
-            throw new Exception("Destination connection is not initialized");
+            throw new InvalidOperationException("Destination connection is not initialized");
+
+        var sw = Stopwatch.StartNew();
+        ulong eventNumber = evt.EventNumber.ToUInt64();
+        StreamState expectedRevision;
 
         try
         {
-            var sw = Stopwatch.StartNew();
+            var readResult = _destinationConnection.ReadStreamAsync(Direction.Backwards, evt.StreamId, StreamPosition.End, 1);
+            ResolvedEvent? lastEvent = null;
+            await foreach (var e in readResult) { lastEvent = e; break; }
 
-            StreamState expectedRevision;
-            ulong eventNumber = evt.EventNumber.ToUInt64();
-
-            try
+            if (lastEvent is not null)
             {
-                var readResult = _destinationConnection.ReadStreamAsync(Direction.Backwards, evt.StreamId, StreamPosition.End, 1);
-                ResolvedEvent? lastEvent = null;
-                await foreach (var e in readResult) { lastEvent = e; break; }
-
-                if (lastEvent is not null)
+                var lastEventNumber = lastEvent.Value.OriginalEventNumber.ToUInt64();
+                if (eventNumber == lastEventNumber + 1)
                 {
-                    var lastEventNumber = lastEvent.Value.OriginalEventNumber.ToUInt64();
-                    if (eventNumber == lastEventNumber + 1)
-                        expectedRevision = StreamState.StreamRevision(lastEventNumber);
-                    else
-                    {
-                        if (evt.StreamId.StartsWith("$$"))
-                            // this is a delete stream/event that it has maxnum constraint set
-                            return;
-                        throw new InvalidOperationException($"Out-of-order event detected in {evt.StreamId}. Expected {lastEventNumber + 1}, got {eventNumber}.");
-                    }
+                    expectedRevision = StreamState.StreamRevision(lastEventNumber);
                 }
-                else if (eventNumber == 0)
-                    expectedRevision = StreamState.NoStream;
                 else
-                    throw new InvalidOperationException($"Cannot append event {eventNumber} to empty stream.");
+                {
+                    if (evt.StreamId.StartsWith("$$"))
+                    {
+                        // System stream that may have max age/max count: skip append but update position
+                        UpdateStreamTracking(evt.StreamId, eventNumber);
+                        return;
+                    }
+
+                    throw new InvalidOperationException($"Out-of-order event detected in {evt.StreamId}. Expected {lastEventNumber + 1}, got {eventNumber}.");
+                }
             }
-            catch (StreamNotFoundException)
+            else if (eventNumber == 0)
             {
-                if (eventNumber == 0)
-                    expectedRevision = StreamState.NoStream;
-                else
-                    throw new InvalidOperationException($"Event {eventNumber} cannot be appended to missing stream.");
+                expectedRevision = StreamState.NoStream;
             }
-
-            if (expectedRevision == StreamState.Any)
+            else
             {
-                _logger.LogError($"{Name}: Refusing to append with {nameof(StreamState.Any)} to stream {evt.StreamId} (event #{evt.EventNumber}) — this is unsafe for replication.");
-                throw new InvalidOperationException($"Unsafe replication state: {nameof(StreamState.Any)} should not be used during normal replication.");
+                throw new InvalidOperationException($"Cannot append event {eventNumber} to empty stream.");
             }
-
-            await _destinationConnection.AppendToStreamAsync(evt.StreamId, expectedRevision, new[] { evt.EventData });
-            sw.Stop();
-
-            lock (_latencySamples)
+        }
+        catch (StreamNotFoundException)
+        {
+            if (eventNumber == 0)
             {
-                _latencySamples.Add(sw.ElapsedMilliseconds);
-                if (_latencySamples.Count > 100) _latencySamples.RemoveAt(0);
+                expectedRevision = StreamState.NoStream;
             }
+            else
+            {
+                throw new InvalidOperationException($"Event {eventNumber} cannot be appended to missing stream.");
+            }
+        }
 
-            _lastPosition = evt.OriginalPosition;
-            _positionRepository.Set(_lastPosition);
+        if (expectedRevision == StreamState.Any)
+        {
+            _logger.LogError($"{Name}: Refusing to append with {nameof(StreamState.Any)} to stream {evt.StreamId} (event #{evt.EventNumber}) — this is unsafe for replication.");
+            throw new InvalidOperationException("Unsafe replication state: StreamState.Any should not be used during replication.");
+        }
 
-            // not necesary as we flush all positions on shutdown
-            //await _streamFileStore.SaveAsync(evt.StreamId, eventNumber);
-
-            Interlocked.Increment(ref _replicatedSinceLastStats);
-            Interlocked.Increment(ref _replicatedTotal);
+        try
+        {
+            await _destinationConnection.AppendToStreamAsync(evt.StreamId, expectedRevision, [evt.EventData]);
         }
         catch (WrongExpectedVersionException ex)
         {
@@ -412,33 +448,33 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 _logger.LogError($"Conflict handling failed: Stream: {evt.StreamId}, EventNumber: {evt.EventNumber}, Error: {ex.Message}");
                 throw new InvalidOperationException("Replication halted due to unrecoverable conflict error.");
             }
+
+            // Conflict handled, still update position and return
+            UpdateStreamTracking(evt.StreamId, eventNumber);
+            return;
         }
+
+        sw.Stop();
+
+        lock (_latencySamples)
+        {
+            _latencySamples.Add(sw.ElapsedMilliseconds);
+            if (_latencySamples.Count > 100) _latencySamples.RemoveAt(0);
+        }
+
+        UpdateStreamTracking(evt.StreamId, eventNumber);
     }
 
-    //private async Task<StreamState> HandleStreamPositionNotMatchingAsync(BufferedEvent evt, ulong eventNumber, ulong lastEventNumber)
-    //{
-    //    StreamState expectedRevision;
-    //    var streamId = evt.StreamId;
-    //    var last = await GetLastEventFromAStreamAsync(streamId);
+    private void UpdateStreamTracking(string streamId, ulong eventNumber)
+    {
+        _lastWrittenPerStream[streamId] = eventNumber;
+        _flusherForStreamPositions.Update(streamId, eventNumber);
+        _lastPosition = new Position(_lastPosition.CommitPosition, _lastPosition.PreparePosition); // keep same position object
+        _positionRepository.Set(_lastPosition);
 
-    //    if (last.HasValue)
-    //    {
-    //        var lastNum = last.Value.OriginalEventNumber.ToUInt64();
-    //        _lastWrittenPerStream[streamId] = lastNum;
-    //        if (eventNumber != lastNum && !streamId.StartsWith("$$"))
-    //            throw new InvalidOperationException($"Out-of-order event detected in {evt.StreamId}. Expected {lastEventNumber + 1}, got {eventNumber}.");
-    //        expectedRevision = StreamState.StreamRevision(lastEventNumber);
-    //        _logger.LogInformation($"{Name}: Initialized {streamId} from destination with value {lastNum}");
-    //    }
-    //    else
-    //    {
-    //        _lastWrittenPerStream[streamId] = 0;
-    //        expectedRevision = StreamState.StreamRevision(0);
-    //        _logger.LogWarning($"{Name}: Stream {streamId} was empty on destination. Assuming 0.");
-    //    }
-
-    //    return expectedRevision;
-    //}
+        Interlocked.Increment(ref _replicatedSinceLastStats);
+        Interlocked.Increment(ref _replicatedTotal);
+    }
 
     private async Task<ResolvedEvent?> GetLastEventFromAStreamAsync(string streamId)
     {

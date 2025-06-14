@@ -7,26 +7,35 @@ namespace Linker;
 
 public class LinkerHelper
 {
-    public bool IsValidForReplica(string eventType, string eventStreamId, Position? originalPosition, string positionEventType, IFilterService? filterService)
+    public bool IsValidForReplica(string eventType, string eventStreamId, Position? originalPosition,
+        string positionEventType, IFilterService? filterService, HashSet<string> streamsToBeExcluded,
+        IDictionary<string, JsonNode?>? metadata, string destinationName)
     {
         if (string.IsNullOrWhiteSpace(eventType))
             return false;
 
-        // Exclude stream IDs that start with exactly one $ or with $$$
-        // This is to let deleted stream/event to pass
-        if (eventStreamId.StartsWith("$$$") ||
-            (eventStreamId.StartsWith('$') && !eventStreamId.StartsWith("$$")))
+        if (streamsToBeExcluded.Contains(eventStreamId))
             return false;
 
-        // Exclude position marker or missing position
+        if (eventStreamId.StartsWith("$$$") || (eventStreamId.StartsWith('$') && !eventStreamId.StartsWith("$$")))
+            return false;
+
         if (eventType.Equals(positionEventType) || !originalPosition.HasValue)
             return false;
+        // Allow position event if it's the first event ever seen
+        //if (eventType.Equals(positionEventType) && originalPosition.HasValue)
+        //    return false;
 
-        // Apply filter service logic if provided
         if (filterService != null && !filterService.IsValid(eventType, eventStreamId))
             return false;
 
-        return true;
+        
+        if (metadata == null || !metadata.TryGetValue("$origin", out var originNode) || originNode is null) 
+            return true;
+
+        // do not replicate events that originated from this destination
+        var origins = originNode.ToString().Split(',');
+        return origins.All(o => !o.Equals(destinationName, StringComparison.OrdinalIgnoreCase));
     }
 
     public bool TryProcessMetadata(string streamId, StreamPosition eventNumber, DateTime created, string origin, IDictionary<string, JsonNode?> inputMetadata, out IDictionary<string, JsonNode> outputMetadata)

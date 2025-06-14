@@ -175,8 +175,8 @@ static class Program
         _loggerFactory = LoggerFactory.Create(logging =>
         {
             logging.ClearProviders();
-            logging.SetMinimumLevel(LogLevel.Information);
-            logging.AddFilter((category, level) => level >= LogLevel.Information);
+            logging.SetMinimumLevel(LogLevel.Debug);
+            logging.AddFilter((category, level) => level >= LogLevel.Debug);
             logging.AddSimpleConsole(options =>
             {
                 options.SingleLine = true;
