@@ -368,6 +368,15 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             return;
         }
 
+        if (_lastWrittenPerStream.TryGetValue(evt.Event.EventStreamId, out var lastWritten)
+            && lastWritten >= evt.Event.EventNumber.ToUInt64())
+        {
+            _logger.LogDebug($"{Name}: Skipping already replicated event {evt.Event.EventNumber}@{evt.Event.EventStreamId}");
+            _lastPosition = evt.OriginalPosition.Value;
+            _positionRepository.Set(_lastPosition);
+            return;
+        }
+
         var bufferedEvent = new BufferedEvent(evt.Event.EventStreamId, evt.Event.EventNumber,
             evt.OriginalPosition.Value,
             new EventData(evt.Event.EventId, evt.Event.EventType, evt.Event.Data,
@@ -403,7 +412,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                     if (evt.StreamId.StartsWith("$$"))
                     {
                         // System stream that may have max age/max count: skip append but update position
-                        UpdateStreamTracking(evt.StreamId, eventNumber);
+                        UpdateStreamTracking(evt);
                         return;
                     }
 
@@ -450,7 +459,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             }
 
             // Conflict handled, still update position and return
-            UpdateStreamTracking(evt.StreamId, eventNumber);
+            UpdateStreamTracking(evt);
             return;
         }
 
@@ -462,14 +471,14 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             if (_latencySamples.Count > 100) _latencySamples.RemoveAt(0);
         }
 
-        UpdateStreamTracking(evt.StreamId, eventNumber);
+        UpdateStreamTracking(evt);
     }
 
-    private void UpdateStreamTracking(string streamId, ulong eventNumber)
+    private void UpdateStreamTracking(BufferedEvent evt)
     {
-        _lastWrittenPerStream[streamId] = eventNumber;
-        _flusherForStreamPositions.Update(streamId, eventNumber);
-        _lastPosition = new Position(_lastPosition.CommitPosition, _lastPosition.PreparePosition); // keep same position object
+        _lastWrittenPerStream[evt.StreamId] = evt.EventNumber.ToUInt64();
+        _flusherForStreamPositions.Update(evt.StreamId, evt.EventNumber.ToUInt64());
+        _lastPosition = evt.OriginalPosition;
         _positionRepository.Set(_lastPosition);
 
         Interlocked.Increment(ref _replicatedSinceLastStats);
