@@ -22,9 +22,6 @@ public class LinkerHelper
 
         if (eventType.Equals(positionEventType) || !originalPosition.HasValue)
             return false;
-        // Allow position event if it's the first event ever seen
-        //if (eventType.Equals(positionEventType) && originalPosition.HasValue)
-        //    return false;
 
         if (filterService != null && !filterService.IsValid(eventType, eventStreamId))
             return false;

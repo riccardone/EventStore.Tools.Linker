@@ -354,6 +354,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             _logger.LogDebug($"{Name}: Skipping event {evt.OriginalEventNumber}@{evt.OriginalStreamId} - Not valid for replication");
             _lastPosition = evt.OriginalPosition.Value;
+            TrackNotReplicatedEvent(evt);
             return;
         }
 
@@ -365,6 +366,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             _lastPosition = evt.OriginalPosition.Value;
             _positionRepository.Set(_lastPosition);
             _logger.LogDebug($"{Name}: Updated global last position to {_lastPosition}");
+            TrackNotReplicatedEvent(evt);
             return;
         }
 
@@ -383,6 +385,25 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 _replicaHelper.SerializeObject(enrichedMetadata)), evt.Event.Created);
         await _channel.Writer.WriteAsync(bufferedEvent, _cts.Token);
         _logger.LogDebug($"{Name} Received event {bufferedEvent.EventNumber}@{bufferedEvent.StreamId}");
+    }
+
+    private void TrackNotReplicatedEvent(ResolvedEvent evt)
+    {
+        var metadata = _replicaHelper.DeserializeObject(evt.Event.Metadata);
+
+        if (!_replicaHelper.IsValidForReplica(evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition,
+                _positionRepository.PositionEventType, _filterService, _streamsToBeExcluded,
+                metadata, _destinationConnectionBuilder.ConnectionName)) 
+            return;
+
+        var eventNumber = evt.Event.EventNumber.ToUInt64();
+        var streamId = evt.Event.EventStreamId;
+
+        if (!_lastWrittenPerStream.TryGetValue(streamId, out var seen) || seen < eventNumber)
+        {
+            _lastWrittenPerStream[streamId] = eventNumber;
+            _flusherForStreamPositions.Update(streamId, eventNumber);
+        }
     }
 
     private async Task AppendEventAsync(BufferedEvent evt)
@@ -476,8 +497,11 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private void UpdateStreamTracking(BufferedEvent evt)
     {
-        _lastWrittenPerStream[evt.StreamId] = evt.EventNumber.ToUInt64();
-        _flusherForStreamPositions.Update(evt.StreamId, evt.EventNumber.ToUInt64());
+        var streamId = evt.StreamId;
+
+        var eventNumber = evt.EventNumber.ToUInt64();
+        _lastWrittenPerStream[streamId] = eventNumber;
+        _flusherForStreamPositions.Update(streamId, eventNumber);
         _lastPosition = evt.OriginalPosition;
         _positionRepository.Set(_lastPosition);
 
