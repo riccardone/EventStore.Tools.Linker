@@ -9,7 +9,7 @@ using Org.BouncyCastle.Security;
 
 namespace Linker.App;
 
-public class CertManager(ILogger logger)
+public class CertManager(ILogger<CertManager> logger)
 {
     public bool TryGetCertificate(string certPath, string privateKey, out X509Certificate2 cert)
     {

@@ -54,12 +54,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private readonly ConcurrentDictionary<string, ulong> _lastWrittenPerStream = new();
     private readonly HashSet<string> _streamsToBeExcluded;
 
-    public LinkerService(
-        ILinkerConnectionBuilder originBuilder,
-        ILinkerConnectionBuilder destinationBuilder,
-        IPositionRepository positionRepository,
-        IFilterService? filterService,
-        Settings settings,
+    public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
+        IPositionRepository positionRepository, IFilterService? filterService, Settings settings,
         ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger(nameof(LinkerService));
@@ -74,15 +70,16 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _bufferSize = Math.Clamp(settings.BufferSize, MinAllowedBuffer, MaxAllowedBuffer);
 
         var streamPositionsPath = Path.Combine(settings.DataFolder, "positions", $"stream_positions_{Name}.json");
-        _flusherForStreamPositions = new PeriodicStreamPositionFlusher(streamPositionsPath, loggerFactory.CreateLogger("Flusher"));
-        
+        _flusherForStreamPositions =
+            new PeriodicStreamPositionFlusher(streamPositionsPath, loggerFactory.CreateLogger("Flusher"));
+
         _replicaHelper = new LinkerHelper();
 
-        _streamsToBeExcluded = new HashSet<string>
-        {
+        _streamsToBeExcluded =
+        [
             $"PositionStream-{_originConnectionBuilder.ConnectionName}",
             $"$$PositionStream-{_originConnectionBuilder.ConnectionName}"
-        };
+        ];
 
         _timerForStats = new System.Timers.Timer(3000);
         _timerForStats.Elapsed += TimerForStats_Elapsed;
