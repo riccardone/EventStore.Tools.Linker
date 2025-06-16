@@ -11,7 +11,7 @@ public class PeriodicStreamPositionFlusher : IStreamPositionFlusher
     private readonly ILogger _logger;
     private readonly Timer _flushTimer;
     private readonly ConcurrentDictionary<string, ulong> _positions = new();
-    private readonly Lock _fileLock = new();
+    private readonly SemaphoreSlim _flushLock = new(1, 1); // async-safe lock
     private bool _running;
 
     public PeriodicStreamPositionFlusher(string filePath, ILogger logger, int flushIntervalMs = 5000)
@@ -22,7 +22,17 @@ public class PeriodicStreamPositionFlusher : IStreamPositionFlusher
         Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
 
         _flushTimer = new Timer(flushIntervalMs);
-        _flushTimer.Elapsed += async (_, _) => await FlushAsync();
+        _flushTimer.Elapsed += async (_, _) =>
+        {
+            try
+            {
+                await FlushAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Flusher] Timer-based flush failed.");
+            }
+        };
     }
 
     public void Update(string streamId, ulong position)
@@ -48,16 +58,15 @@ public class PeriodicStreamPositionFlusher : IStreamPositionFlusher
 
     public async Task FlushAsync()
     {
+        if (!_running && !Environment.HasShutdownStarted)
+            return;
+
+        await _flushLock.WaitAsync();
         try
         {
-            Dictionary<string, ulong> copy = new(_positions);
+            var copy = new Dictionary<string, ulong>(_positions);
 
-            string json;
-            lock (_fileLock)
-            {
-                json = JsonSerializer.Serialize(copy, new JsonSerializerOptions { WriteIndented = true });
-            }
-
+            var json = JsonSerializer.Serialize(copy, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(_filePath, json);
             _logger.LogDebug($"[Flusher] Flushed {copy.Count} stream positions to {_filePath}");
         }
@@ -65,6 +74,15 @@ public class PeriodicStreamPositionFlusher : IStreamPositionFlusher
         {
             _logger.LogWarning(ex, "[Flusher] Failed to flush stream positions.");
         }
+        finally
+        {
+            _flushLock.Release();
+        }
+    }
+
+    public void Remove(string streamId)
+    {
+        _positions.TryRemove(streamId, out _);
     }
 
     public async Task<IDictionary<string, ulong>> LoadAsync()

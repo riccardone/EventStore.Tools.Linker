@@ -1,10 +1,14 @@
-﻿using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using EventStore.PositionRepository.Gprc;
+﻿using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace Linker.App;
 
@@ -65,9 +69,14 @@ public class ReplicaApp
             origin ??= o;
             destination ??= d;
 
+            var name = $"From-{o.ConnectionName}-To-{d.ConnectionName}";
+
             var service = new LinkerService(o, d,
                 new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
-                filterService, _settings, _loggerFactory);
+                filterService, _settings,
+                new FileAdjustedStreamRepository(
+                    Path.Combine(_settings.DataFolder, "positions", $"adjusted_streams_{name}.json"),
+                    _loggerFactory.CreateLogger<FileAdjustedStreamRepository>()), _loggerFactory);
 
             services.Add(service);
         }
