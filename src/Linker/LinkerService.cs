@@ -371,8 +371,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             _logger.LogDebug(
                 "{Name}: Skipping event {EventNumber}@{StreamId} - Not valid for replication",
                 Name, evt.OriginalEventNumber, evt.OriginalStreamId);
-            _lastPosition = evt.OriginalPosition.Value;
-            _positionRepository.Set(_lastPosition);
             return;
         }
 
@@ -381,8 +379,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 _replicaHelper.DeserializeObject(evt.Event.Metadata),
                 out var enrichedMetadata))
         {
-            _lastPosition = evt.OriginalPosition.Value;
-            _positionRepository.Set(_lastPosition);
             _logger.LogDebug($"{Name}: Updated global last position to {_lastPosition}");
             return;
         }
@@ -397,8 +393,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             _logger.LogDebug("{Name}: Skipping already replicated event {EventNumber}@{StreamId}",
                 Name, evt.Event.EventNumber, streamId);
-            _lastPosition = evt.OriginalPosition.Value;
-            _positionRepository.Set(_lastPosition);
             return;
         }
 
@@ -431,27 +425,25 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             var lastEventNumber = lastInDest.Value.OriginalEventNumber.ToUInt64();
             _lastWrittenPerStream[streamId] = lastEventNumber;
             _flusherForStreamPositions.Update(streamId, lastEventNumber);
-            _logger.LogInformation("{Name}: Initialized stream {StreamId} with existing event #{LastEventNumber}",
+            _logger.LogDebug("{Name}: Initialized stream {StreamId} with existing event #{LastEventNumber}",
                 Name, streamId, lastEventNumber);
         }
         else if (eventNumber == 0)
         {
             _lastWrittenPerStream[streamId] = null; // Mark as ready but not written yet
-            _logger.LogInformation("{Name}: Initialized empty stream {StreamId}, ready to replicate event 0", Name, streamId);
+            _logger.LogDebug("{Name}: Initialized empty stream {StreamId}, ready to replicate event 0", Name, streamId);
         }
         else if (_adjustedStartStreams.Contains(streamId))
         {
             _lastWrittenPerStream[streamId] = eventNumber - 1;
             _flusherForStreamPositions.Update(streamId, eventNumber - 1);
-            _logger.LogInformation("{Name}: Adjusted start for stream {StreamId}, tracking starts at {EventNumber}",
+            _logger.LogDebug("{Name}: Adjusted start for stream {StreamId}, tracking starts at {EventNumber}",
                 Name, streamId, eventNumber - 1);
         }
         else
         {
-            _logger.LogWarning("{Name}: Skipping event {EventNumber}@{StreamId} - not initialized and no adjusted start",
+            _logger.LogTrace("{Name}: Skipping event {EventNumber}@{StreamId} - not initialized and no adjusted start",
                 Name, eventNumber, streamId);
-            _lastPosition = evt.OriginalPosition.Value;
-            _positionRepository.Set(_lastPosition);
         }
     }
 
@@ -552,6 +544,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         try
         {
             await _destinationConnection.AppendToStreamAsync(evt.StreamId, expectedRevision, [evt.EventData]);
+            _lastPosition = evt.OriginalPosition;
+            _positionRepository.Set(_lastPosition);
         }
         catch (WrongExpectedVersionException ex)
         {
@@ -606,8 +600,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
         _lastWrittenPerStream[streamId] = eventNumber;
         _flusherForStreamPositions.Update(streamId, eventNumber);
-        _lastPosition = evt.OriginalPosition;
-        _positionRepository.Set(_lastPosition);
 
         Interlocked.Increment(ref _replicatedSinceLastStats);
         Interlocked.Increment(ref _replicatedTotal);
@@ -664,6 +656,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             });
             Interlocked.Increment(ref _replicatedSinceLastStats);
             Interlocked.Increment(ref _replicatedTotal);
+            _lastPosition = evt.OriginalPosition;
+            _positionRepository.Set(_lastPosition);
             return true;
         }
         catch (Exception innerEx)
