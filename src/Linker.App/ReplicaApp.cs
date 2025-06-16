@@ -8,7 +8,6 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 
 namespace Linker.App;
 
@@ -36,6 +35,7 @@ public class ReplicaApp
         _logger.LogInformation("BufferSize       = {BufferSize}", _settings.BufferSize);
         _logger.LogInformation("ResolveLinkTos   = {ResolveLinkTos}", _settings.ResolveLinkTos);
         _logger.LogInformation("HandleConflicts  = {HandleConflicts}", _settings.HandleConflicts);
+
         var services = new List<ILinkerService>();
         ILinkerConnectionBuilder? origin = null;
         ILinkerConnectionBuilder? destination = null;
@@ -51,8 +51,6 @@ public class ReplicaApp
             var filters = link.Filters
                 .Select(f => new Filter(f.FilterType, f.Value, f.FilterOperation))
                 .ToList();
-
-            var filterService = new FilterService(filters);
 
             _certManager.TryGetCertificate(link.Origin.Certificate, link.Origin.CertificatePrivateKey, out var originCert);
             _certManager.TryGetCertificate(link.Destination.Certificate, link.Destination.CertificatePrivateKey, out var destinationCert);
@@ -73,10 +71,12 @@ public class ReplicaApp
 
             var service = new LinkerService(o, d,
                 new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
-                filterService, _settings,
+                new FilterService(filters),
+                _settings,
                 new FileAdjustedStreamRepository(
                     Path.Combine(_settings.DataFolder, "positions", $"adjusted_streams_{name}.json"),
-                    _loggerFactory.CreateLogger<FileAdjustedStreamRepository>()), _loggerFactory);
+                    _loggerFactory.CreateLogger<FileAdjustedStreamRepository>()),
+                _loggerFactory);
 
             services.Add(service);
         }
@@ -89,7 +89,66 @@ public class ReplicaApp
             await svc.StartAsync();
         }
 
+        // Test input loop
+        if (origin != null && destination != null)
+        {
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var key = Console.ReadKey(intercept: true);
+                    switch (key.Key)
+                    {
+                        case ConsoleKey.O:
+                            _logger.LogInformation($"Write the {origin.ConnectionName} stream name:");
+                            var oStream = Console.ReadLine();
+                            _logger.LogInformation($"Write the {origin.ConnectionName} event type:");
+                            var oType = Console.ReadLine();
+                            await AppendTestEvent(oStream!, oType!, origin);
+                            break;
+
+                        case ConsoleKey.D:
+                            _logger.LogInformation($"Write the {destination.ConnectionName} stream name:");
+                            var dStream = Console.ReadLine();
+                            _logger.LogInformation($"Write the {destination.ConnectionName} event type:");
+                            var dType = Console.ReadLine();
+                            await AppendTestEvent(dStream!, dType!, destination);
+                            break;
+                    }
+                }
+            });
+        }
+
         _logger.LogInformation("Replica services running. Press Ctrl+C to shut down.");
-        await Task.Delay(Timeout.Infinite); // Replace with a better lifetime manager if needed
+        await Task.Delay(Timeout.Infinite);
+    }
+
+    private static async Task AppendTestEvent(string stream, string eventType, ILinkerConnectionBuilder senderBuilder)
+    {
+        await AppendEventAsync("{\"name\":\"for test...\"}", stream, eventType, senderBuilder);
+    }
+
+    private static async Task<Guid> AppendEventAsync(
+        string jsonBody,
+        string stream,
+        string eventType,
+        ILinkerConnectionBuilder senderBuilder, Guid id)
+    {
+        await using var conn = senderBuilder.Build();
+
+        var data = Encoding.UTF8.GetBytes(jsonBody);
+        var evt = new EventData(Uuid.FromGuid(id), eventType, data);
+
+        await conn.AppendToStreamAsync(stream, StreamState.Any, new[] { evt });
+        return id;
+    }
+
+    private static async Task<Guid> AppendEventAsync(
+        string jsonBody,
+        string stream,
+        string eventType,
+        ILinkerConnectionBuilder senderBuilder)
+    {
+        return await AppendEventAsync(jsonBody, stream, eventType, senderBuilder, Guid.NewGuid());
     }
 }

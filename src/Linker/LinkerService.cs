@@ -51,7 +51,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     public const int MinAllowedBuffer = 1;
 
     private readonly ConcurrentDictionary<string, SortedDictionary<ulong, BufferedEvent>> _perStreamBuffers = new();
-    private readonly ConcurrentDictionary<string, ulong> _lastWrittenPerStream = new();
+    private readonly ConcurrentDictionary<string, ulong?> _lastWrittenPerStream = new();
     private readonly HashSet<string> _streamsToBeExcluded;
     private readonly HashSet<string> _adjustedStartStreams = new();
     private readonly IAdjustedStreamRepository _adjustedStreamRepository;
@@ -294,28 +294,25 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         var buffer = _perStreamBuffers.GetOrAdd(streamId, _ => new SortedDictionary<ulong, BufferedEvent>());
         buffer[eventNum] = evt;
 
-        if (!_lastWrittenPerStream.TryGetValue(streamId, out var lastWritten))
-        {
-            // We don't yet know what's been written — assume -1 and wait for event 0
-            lastWritten = ulong.MaxValue;
-        }
+        ulong expected;
+        if (_lastWrittenPerStream.TryGetValue(streamId, out var lastWritten))
+            expected = (lastWritten.HasValue ? lastWritten.Value + 1 : 0);
+        else
+            expected = 0;
 
-        var expected = lastWritten + 1;
-
-        _logger.LogTrace($"{Name}: LastWritten={lastWritten}, Expected={expected}, BufferCount={buffer.Count}");
+        _logger.LogTrace($"{Name}: LastWritten={(lastWritten.HasValue ? lastWritten.Value.ToString() : "null")}, Expected={expected}, BufferCount={buffer.Count}");
         _logger.LogTrace($"{Name}: Buffer keys: {string.Join(",", buffer.Keys)}");
+        
+        if (!buffer.ContainsKey(expected))
+            _logger.LogWarning($"{Name}: Missing expected event {expected}@{streamId}, can't append");
 
         while (buffer.TryGetValue(expected, out var next))
         {
             await AppendEventAsync(next);
-
-            // Only after successful append
             _lastWrittenPerStream[streamId] = expected;
             _flusherForStreamPositions.Update(streamId, expected);
-
             if (expected == 0)
                 await _flusherForStreamPositions.FlushAsync();
-
             buffer.Remove(expected);
             expected++;
         }
@@ -367,14 +364,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
         var metadata = _replicaHelper.DeserializeObject(evt.Event.Metadata);
 
-        if (!_replicaHelper.IsValidForReplica(
-                evt.Event.EventType,
-                evt.Event.EventStreamId,
-                evt.OriginalPosition.Value,
-                _positionRepository.PositionEventType,
-                _filterService,
-                _streamsToBeExcluded,
-                metadata,
+        if (!_replicaHelper.IsValidForReplica(evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition.Value,
+                _positionRepository.PositionEventType, _filterService, _streamsToBeExcluded, metadata,
                 _destinationConnectionBuilder.ConnectionName))
         {
             _logger.LogDebug(
@@ -385,19 +376,24 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             return;
         }
 
+        if (!_replicaHelper.TryProcessMetadata(evt.Event.EventStreamId, evt.Event.EventNumber, evt.Event.Created,
+                _originConnectionBuilder.ConnectionName,
+                _replicaHelper.DeserializeObject(evt.Event.Metadata),
+                out var enrichedMetadata))
+        {
+            _lastPosition = evt.OriginalPosition.Value;
+            _positionRepository.Set(_lastPosition);
+            _logger.LogDebug($"{Name}: Updated global last position to {_lastPosition}");
+            return;
+        }
+
         var streamId = evt.Event.EventStreamId;
         var eventNumber = evt.Event.EventNumber.ToUInt64();
 
-        // Always ensure the stream is initialized in tracking if not yet present
-        if (!_lastWrittenPerStream.ContainsKey(streamId))
-        {
-            // If we've never seen this stream, and we don't know if it was already written,
-            // we defer setting tracking until we actually replicate the first event.
-            _logger.LogDebug("{Name}: First time seeing stream {StreamId}. Awaiting successful append before tracking.",
-                Name, streamId);
-        }
+        await EnsureStreamTrackingAsync(evt, streamId,
+            eventNumber);
 
-        if (_lastWrittenPerStream.TryGetValue(streamId, out var lastWritten) && eventNumber <= lastWritten)
+        if (_lastWrittenPerStream.TryGetValue(streamId, out var lastWritten) && lastWritten.HasValue && eventNumber <= lastWritten.Value)
         {
             _logger.LogDebug("{Name}: Skipping already replicated event {EventNumber}@{StreamId}",
                 Name, evt.Event.EventNumber, streamId);
@@ -414,31 +410,50 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 evt.Event.EventId,
                 evt.Event.EventType,
                 evt.Event.Data,
-                _replicaHelper.SerializeObject(metadata)),
+                _replicaHelper.SerializeObject(enrichedMetadata)),
             evt.Event.Created);
 
         await _channel.Writer.WriteAsync(bufferedEvent, _cts.Token);
         _logger.LogDebug("{Name} Received event {EventNumber}@{StreamId}", Name, bufferedEvent.EventNumber, streamId);
     }
 
-    //private void TrackNotReplicatedEvent(ResolvedEvent evt)
-    //{
-    //    var metadata = _replicaHelper.DeserializeObject(evt.Event.Metadata);
+    private async Task EnsureStreamTrackingAsync(ResolvedEvent evt, string streamId, ulong eventNumber)
+    {
+        if (_lastWrittenPerStream.ContainsKey(streamId))
+        {
+            _logger.LogDebug("{Name}: Stream {StreamId} already tracked. Skipping initialization.", Name, streamId);
+            return;
+        }
 
-    //    if (!_replicaHelper.IsValidForReplica(evt.Event.EventType, evt.Event.EventStreamId, evt.OriginalPosition,
-    //            _positionRepository.PositionEventType, _filterService, _streamsToBeExcluded,
-    //            metadata, _destinationConnectionBuilder.ConnectionName)) 
-    //        return;
-
-    //    var eventNumber = evt.Event.EventNumber.ToUInt64();
-    //    var streamId = evt.Event.EventStreamId;
-
-    //    if (!_lastWrittenPerStream.TryGetValue(streamId, out var seen) || seen < eventNumber)
-    //    {
-    //        _lastWrittenPerStream[streamId] = eventNumber;
-    //        _flusherForStreamPositions.Update(streamId, eventNumber);
-    //    }
-    //}
+        var lastInDest = await GetLastEventFromAStreamAsync(streamId);
+        if (lastInDest != null)
+        {
+            var lastEventNumber = lastInDest.Value.OriginalEventNumber.ToUInt64();
+            _lastWrittenPerStream[streamId] = lastEventNumber;
+            _flusherForStreamPositions.Update(streamId, lastEventNumber);
+            _logger.LogInformation("{Name}: Initialized stream {StreamId} with existing event #{LastEventNumber}",
+                Name, streamId, lastEventNumber);
+        }
+        else if (eventNumber == 0)
+        {
+            _lastWrittenPerStream[streamId] = null; // Mark as ready but not written yet
+            _logger.LogInformation("{Name}: Initialized empty stream {StreamId}, ready to replicate event 0", Name, streamId);
+        }
+        else if (_adjustedStartStreams.Contains(streamId))
+        {
+            _lastWrittenPerStream[streamId] = eventNumber - 1;
+            _flusherForStreamPositions.Update(streamId, eventNumber - 1);
+            _logger.LogInformation("{Name}: Adjusted start for stream {StreamId}, tracking starts at {EventNumber}",
+                Name, streamId, eventNumber - 1);
+        }
+        else
+        {
+            _logger.LogWarning("{Name}: Skipping event {EventNumber}@{StreamId} - not initialized and no adjusted start",
+                Name, eventNumber, streamId);
+            _lastPosition = evt.OriginalPosition.Value;
+            _positionRepository.Set(_lastPosition);
+        }
+    }
 
     private async Task AppendEventAsync(BufferedEvent evt)
     {
@@ -448,6 +463,11 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         var sw = Stopwatch.StartNew();
         ulong eventNumber = evt.EventNumber.ToUInt64();
         StreamState expectedRevision;
+
+        if (Name.Equals("From-db02-To-db01"))
+        {
+            
+        }
 
         try
         {
