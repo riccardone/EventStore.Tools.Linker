@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using KurrentDB.Client;
 
-namespace Linker;
+namespace Linker.Core;
 
 public class LinkerHelper
 {

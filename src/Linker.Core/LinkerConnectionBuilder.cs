@@ -1,7 +1,7 @@
 ﻿using System.Security.Cryptography.X509Certificates;
 using KurrentDB.Client;
 
-namespace Linker;
+namespace Linker.Core;
 
 public class LinkerConnectionBuilder(
     KurrentDBClientSettings connectionSettings,

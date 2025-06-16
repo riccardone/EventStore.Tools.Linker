@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace Linker;
+namespace Linker.Core;
 
 public class FileAdjustedStreamRepository(string path, ILogger<FileAdjustedStreamRepository> logger)
     : IAdjustedStreamRepository

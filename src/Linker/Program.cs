@@ -1,12 +1,10 @@
-﻿using System;
-using System.IO;
-using System.Threading.Tasks;
+﻿using Linker.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Linker.App;
+namespace Linker;
 
 internal class Program
 {
@@ -16,8 +14,10 @@ internal class Program
             .ConfigureAppConfiguration((context, config) =>
             {
                 var env = context.HostingEnvironment;
+                var configPath = Environment.GetEnvironmentVariable("LINKER_CONFIG_PATH") ?? "appsettings.json";
+
                 config.SetBasePath(Directory.GetCurrentDirectory());
-                config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
+                config.AddJsonFile(configPath, optional: true, reloadOnChange: false);
                 config.AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true, reloadOnChange: false);
                 config.AddEnvironmentVariables();
             })

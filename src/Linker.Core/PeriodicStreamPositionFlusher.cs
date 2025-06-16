@@ -3,7 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Timer = System.Timers.Timer;
 
-namespace Linker;
+namespace Linker.Core;
 
 public class PeriodicStreamPositionFlusher : IStreamPositionFlusher
 {

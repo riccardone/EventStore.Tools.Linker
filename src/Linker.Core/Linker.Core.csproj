@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageId>Linker</PackageId>
+    <Title>Data Replication for KurrentDb</Title>
+    <Description>Replicate data between KurrentDb (former EventStore) instances</Description>
+    <Copyright>@2025 Riccardo Di Nuzzo</Copyright>
+    <PackageProjectUrl>https://github.com/riccardone/Linker</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/riccardone/Linker</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>KurrentDb; EventSourcing; Replication</PackageTags>
+    <PackageReleaseNotes>fix last save global position
+project renaming</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="EventStore.Tools.PositionRepository.Gprc" Version="1.4.3" />
+  </ItemGroup>
+
+	<ItemGroup>
+		<None Update="README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+   </ItemGroup>
+
+</Project>

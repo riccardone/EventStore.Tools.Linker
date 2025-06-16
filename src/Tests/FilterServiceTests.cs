@@ -1,4 +1,4 @@
-﻿using Linker;
+﻿using Linker.Core;
 using NUnit.Framework;
 using NUnit.Framework.Legacy;
 

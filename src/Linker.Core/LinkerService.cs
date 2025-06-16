@@ -1,14 +1,14 @@
-﻿using EventStore.PositionRepository.Gprc;
-using KurrentDB.Client;
-using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using System.Timers;
+using EventStore.PositionRepository.Gprc;
+using KurrentDB.Client;
+using Microsoft.Extensions.Logging;
 using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
-namespace Linker;
+namespace Linker.Core;
 
 public class LinkerService : ILinkerService, IAsyncDisposable
 {

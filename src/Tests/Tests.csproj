@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Linker\Linker.csproj" />
+    <ProjectReference Include="..\Linker.Core\Linker.Core.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-﻿namespace Linker;
+﻿namespace Linker.Core;
 
 public class FilterService : IFilterService
 {

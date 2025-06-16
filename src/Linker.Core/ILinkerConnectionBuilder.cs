@@ -1,6 +1,6 @@
 ﻿using KurrentDB.Client;
 
-namespace Linker;
+namespace Linker.Core;
 
 public interface ILinkerConnectionBuilder
 {

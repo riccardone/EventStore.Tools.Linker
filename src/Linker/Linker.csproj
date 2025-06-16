@@ -1,31 +1,39 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <Description>Data replication between KurrentDb instances</Description>
-    <Copyright>Riccardo Di Nuzzo</Copyright>
-    <PackageProjectUrl>https://github.com/riccardone/Linker</PackageProjectUrl>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <RepositoryUrl>https://github.com/riccardone/Linker</RepositoryUrl>
-    <Title>Linker</Title>
-    <Version>2.0.2</Version>
-    <PackageReleaseNotes>replica of delete events</PackageReleaseNotes>
-    <RepositoryType>git</RepositoryType>
-    <PackageTags>KurrentDb; EventSourcing</PackageTags>
-  </PropertyGroup>
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
 
-   <ItemGroup>
-    <PackageReference Include="EventStore.Tools.PositionRepository.Gprc" Version="1.4.3" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="BouncyCastle.NetCore" Version="2.2.1" />
+		<PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.6" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.6" />
+		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1-Preview.1" />
+	</ItemGroup>
 
-   <ItemGroup>
-     <None Update="README.md">
-       <Pack>True</Pack>
-       <PackagePath>\</PackagePath>
-     </None>
-   </ItemGroup>
+	<ItemGroup>
+		<None Include="..\.dockerignore" Link=".dockerignore">
+			<DependentUpon>$(DockerDefaultDockerfile)</DependentUpon>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\Linker.Core\Linker.Core.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 
 </Project>

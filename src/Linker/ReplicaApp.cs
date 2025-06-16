@@ -1,15 +1,10 @@
-﻿using EventStore.PositionRepository.Gprc;
+﻿using System.Text;
+using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
+using Linker.Core;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
-namespace Linker.App;
+namespace Linker;
 
 public class ReplicaApp
 {
@@ -89,34 +84,37 @@ public class ReplicaApp
             await svc.StartAsync();
         }
 
-        // Test input loop
-        if (origin != null && destination != null)
+        if (Environment.GetEnvironmentVariable("LINKER_INTERACTIVE") == "true")
         {
-            _ = Task.Run(async () =>
+            // Test input loop
+             if (origin != null && destination != null)
             {
-                while (true)
+                _ = Task.Run(async () =>
                 {
-                    var key = Console.ReadKey(intercept: true);
-                    switch (key.Key)
+                    while (true)
                     {
-                        case ConsoleKey.O:
-                            _logger.LogInformation($"Write the {origin.ConnectionName} stream name:");
-                            var oStream = Console.ReadLine();
-                            _logger.LogInformation($"Write the {origin.ConnectionName} event type:");
-                            var oType = Console.ReadLine();
-                            await AppendTestEvent(oStream!, oType!, origin);
-                            break;
+                        var key = Console.ReadKey(intercept: true);
+                        switch (key.Key)
+                        {
+                            case ConsoleKey.O:
+                                _logger.LogInformation($"Write the {origin.ConnectionName} stream name:");
+                                var oStream = Console.ReadLine();
+                                _logger.LogInformation($"Write the {origin.ConnectionName} event type:");
+                                var oType = Console.ReadLine();
+                                await AppendTestEvent(oStream!, oType!, origin);
+                                break;
 
-                        case ConsoleKey.D:
-                            _logger.LogInformation($"Write the {destination.ConnectionName} stream name:");
-                            var dStream = Console.ReadLine();
-                            _logger.LogInformation($"Write the {destination.ConnectionName} event type:");
-                            var dType = Console.ReadLine();
-                            await AppendTestEvent(dStream!, dType!, destination);
-                            break;
+                            case ConsoleKey.D:
+                                _logger.LogInformation($"Write the {destination.ConnectionName} stream name:");
+                                var dStream = Console.ReadLine();
+                                _logger.LogInformation($"Write the {destination.ConnectionName} event type:");
+                                var dType = Console.ReadLine();
+                                await AppendTestEvent(dStream!, dType!, destination);
+                                break;
+                        }
                     }
-                }
-            });
+                });
+            }
         }
 
         _logger.LogInformation("Replica services running. Press Ctrl+C to shut down.");
