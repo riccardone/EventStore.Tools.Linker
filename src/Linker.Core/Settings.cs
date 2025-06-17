@@ -2,7 +2,7 @@
 
 public class Settings
 {
-    public string DataFolder { get; set; } = "data";
+    public string DataFolder { get; set; } = "/data"; 
     public bool AutomaticTuning { get; set; } = true;
     public int BufferSize { get; set; } = 100;
     public bool HandleConflicts { get; set; } = true;
@@ -23,6 +23,8 @@ public class Origin
     public required string ConnectionName { get; set; }
     public string? Certificate { get; set; }
     public string? CertificatePrivateKey { get; set; }
+    public string? CertificateFile { get; set; }
+    public string? PrivateKeyFile { get; set; }
 }
 
 public class Destination
@@ -31,4 +33,6 @@ public class Destination
     public required string ConnectionName { get; set; }
     public string? Certificate { get; set; }
     public string? CertificatePrivateKey { get; set; }
+    public string? CertificateFile { get; set; }
+    public string? PrivateKeyFile { get; set; }
 }

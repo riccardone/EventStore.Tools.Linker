@@ -47,17 +47,16 @@ public class ReplicaApp
                 .Select(f => new Filter(f.FilterType, f.Value, f.FilterOperation))
                 .ToList();
 
-            _certManager.TryGetCertificate(link.Origin.Certificate, link.Origin.CertificatePrivateKey, out var originCert);
-            _certManager.TryGetCertificate(link.Destination.Certificate, link.Destination.CertificatePrivateKey, out var destinationCert);
+            var originCert = _certManager.GetCertificate(link.Origin.Certificate, link.Origin.CertificatePrivateKey,
+                link.Origin.CertificateFile, link.Origin.PrivateKeyFile);
 
-            var o = new LinkerConnectionBuilder(
-                KurrentDBClientSettings.Create(link.Origin.ConnectionString),
-                link.Origin.ConnectionName,
-                originCert);
-            var d = new LinkerConnectionBuilder(
-                KurrentDBClientSettings.Create(link.Destination.ConnectionString),
-                link.Destination.ConnectionName,
-                destinationCert);
+            var destinationCert = _certManager.GetCertificate(link.Destination.Certificate, link.Destination.CertificatePrivateKey,
+                link.Destination.CertificateFile, link.Destination.PrivateKeyFile);
+
+            var o = new LinkerConnectionBuilder(KurrentDBClientSettings.Create(link.Origin.ConnectionString),
+                link.Origin.ConnectionName, originCert);
+            var d = new LinkerConnectionBuilder(KurrentDBClientSettings.Create(link.Destination.ConnectionString),
+                link.Destination.ConnectionName, destinationCert);
 
             origin ??= o;
             destination ??= d;

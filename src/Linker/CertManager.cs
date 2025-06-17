@@ -9,20 +9,29 @@ namespace Linker;
 
 public class CertManager(ILogger<CertManager> logger)
 {
-    public bool TryGetCertificate(string certPath, string privateKey, out X509Certificate2 cert)
+    public X509Certificate2? GetCertificate(string? inlineCert, string? inlineKey, string? certFile, string? keyFile)
     {
-        cert = null;
         try
         {
-            if (string.IsNullOrWhiteSpace(certPath) || string.IsNullOrWhiteSpace(privateKey))
-                return false;
-            cert = ConvertToX509Certificate2(LoadCertificate(certPath), LoadPrivateKey(privateKey));
-            return true;
+            // Inline cert and key
+            if (!string.IsNullOrWhiteSpace(inlineCert) && !string.IsNullOrWhiteSpace(inlineKey))
+                return ConvertToX509Certificate2(LoadCertificate(inlineCert), LoadPrivateKey(inlineKey));
+
+            if (string.IsNullOrWhiteSpace(certFile) || string.IsNullOrWhiteSpace(keyFile))
+                // No certs provided = unsecure mode
+                return null;
+
+            // Cert and key from files
+            if (!File.Exists(certFile) || !File.Exists(keyFile))
+                throw new ArgumentException("Can't find specified security files");
+            var certPem = File.ReadAllText(certFile);
+            var keyPem = File.ReadAllText(keyFile);
+            return ConvertToX509Certificate2(LoadCertificate(certPem), LoadPrivateKey(keyPem));
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            logger.LogError(e, $"Error while {nameof(TryGetCertificate)}");
-            return false;
+            logger.LogError(ex, "Error resolving certificate from inline or file");
+            throw;
         }
     }
 
