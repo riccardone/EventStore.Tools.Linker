@@ -40,6 +40,29 @@ Each Link object defines one replication pair:
   "filters": []                      // Optional list of filters (see filter section)
 }
 ```
+If you run the Docker image [available here](https://hub.docker.com/repository/docker/riccardone/linker/general), this is an example configuration to be set in mounted volumes
+```
+{
+  "DataFolder": "/data",
+  "links": [
+    {
+      "origin": {
+        "connectionString": "esdb://admin:changeit@db01:2114?tls=true",
+        "connectionName": "db01",
+        "certificateFile": "/certs/db01.crt.pem",
+        "privateKeyFile": "/certs/db01.key.pem"
+      },
+      "destination": {
+        "connectionString": "esdb://admin:changeit@db02:2115?tls=true",
+        "connectionName": "db02",
+        "certificateFile": "/certs/db02.crt.pem",
+        "privateKeyFile": "/certs/db02.key.pem"
+      },
+      "filters": []
+    }
+  ]
+}
+```
 
 ## Active-Passive
 One instance is the origin, the other instance is the destination. To configure a simple link with a filter excluding one specific stream:
