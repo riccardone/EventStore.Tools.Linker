@@ -24,10 +24,10 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore src/Linker.sln
+        run: dotnet restore src/Linker.App.sln
 
       - name: Build solution
-        run: dotnet build src/Linker.sln -c Release --no-restore
+        run: dotnet build src/Linker.App.sln -c Release --no-restore
 
       - name: Extract version from tag
         id: version
