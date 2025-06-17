@@ -2,8 +2,7 @@
 
 # Linker: a tool for KurrentDb (former EventStore) cross cluster replication
 This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/)
-
-![image](https://github.com/user-attachments/assets/387137d2-a65e-4a19-a96f-e3ab57c58543)
+![image](https://github.com/user-attachments/assets/aff928d0-37d3-4624-8021-1e4dde7f62b7)
 Configure the origin and the destination of the data replication. Eact Link is between Origin and Destination. It is possible run multiple links at the same time for complex scenarios. To enforce ordering in the destination db Linker save stream positions on disk in a folder called data per default. Path is configurable as a setting if needed.
 
 # Configuration Modes
