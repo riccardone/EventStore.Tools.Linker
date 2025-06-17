@@ -7,7 +7,7 @@ This library is for replicating user data between EventStore clusters or single 
 
 Configure the origin and the destination of the data replication. Eact Link is between Origin and Destination. It is possible run multiple links at the same time for complex scenarios. To enforce ordering in the destination db Linker save stream positions on disk in a folder called data per default. Path is configurable as a setting if needed.
 
-# Configuration Modes
+# Configuration 
 This app make use of the appsettings.json file to configure Linked KurrentDb's. 
 You can have as many Links as you need and as your running machine allow you to run. Even when you are replicating at full speed, the Linker logic make use of **backpressure** tecnique in order to not take the full amount of CPU and Memory available.  
 
