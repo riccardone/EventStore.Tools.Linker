@@ -63,6 +63,15 @@ If you run the Docker image [available here](https://hub.docker.com/repository/d
   ]
 }
 ```
+Docker Run Example
+```
+docker run --rm \
+  -v $(pwd)/config:/config \
+  -v $(pwd)/certs:/certs \
+  -v $(pwd)/data:/data \
+  -e LINKER_CONFIG_PATH=/config/appsettings.json \
+  linker-app:latest
+```
 
 ## Active-Passive
 One instance is the origin, the other instance is the destination. To configure a simple link with a filter excluding one specific stream:
