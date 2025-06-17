@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <PackageId>Linker</PackageId>
+    <PackageId></PackageId>
     <Title>Data Replication for KurrentDb</Title>
     <Description>Replicate data between KurrentDb (former EventStore) instances</Description>
     <Copyright>@2025 Riccardo Di Nuzzo</Copyright>
