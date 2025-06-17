@@ -34,7 +34,7 @@ RUN mkdir -p /config /certs /data
 COPY --from=publish /app/publish .
 
 # Optional default config (can be overridden with mount or env var)
-COPY src/Linker.App/appsettings.json /config/appsettings.json
+COPY src/Linker/appsettings.json /config/appsettings.json
 
 # Recommended: default env for config file (override at runtime)
 ENV LINKER_CONFIG_PATH=/config/appsettings.json
