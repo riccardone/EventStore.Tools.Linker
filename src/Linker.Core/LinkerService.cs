@@ -304,7 +304,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _logger.LogTrace($"{Name}: Buffer keys: {string.Join(",", buffer.Keys)}");
         
         if (!buffer.ContainsKey(expected))
-            _logger.LogWarning($"{Name}: Missing expected event {expected}@{streamId}, can't append");
+            _logger.LogDebug($"{Name}: Missing expected event {expected}@{streamId}, can't append");
 
         while (buffer.TryGetValue(expected, out var next))
         {
