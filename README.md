@@ -106,7 +106,7 @@ One instance is the origin, the other instance is the destination. To configure 
 }
 ```
 
-## MultiMaster  
+## Active-Active  
 Configure two links swapping the same Origin and Destination for a **multi master** ACTIVE-ACTIVE replication  
 ```
 {
