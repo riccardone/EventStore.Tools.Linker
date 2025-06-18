@@ -1,7 +1,7 @@
 [![Build and Test](https://github.com/riccardone/Linker/actions/workflows/ci.yml/badge.svg)](https://github.com/riccardone/Linker/actions/workflows/ci.yml)
 
 # Linker: a tool for KurrentDb (former EventStore) cross cluster replication
-To run this program download the [latest version](https://github.com/riccardone/Linker/releases) or run as a [Docker container](https://hub.docker.com/repositories/riccardone).
+To run this program download the [latest version](https://github.com/riccardone/Linker/releases) or run as a [Docker container](https://hub.docker.com/r/riccardone/linker).
 This library is for replicating user data between EventStore clusters or single instances. More info on this article [Cross Data Center Replication with Linker](http://www.dinuzzo.co.uk/2019/11/17/cross-data-center-replication-with-linker/)
 
 ![image](https://github.com/user-attachments/assets/aff928d0-37d3-4624-8021-1e4dde7f62b7)
@@ -42,7 +42,7 @@ Each Link object defines one replication pair:
   "filters": []                      // Optional list of filters (see filter section)
 }
 ```
-If you run the Docker image [available here](https://hub.docker.com/repository/docker/riccardone/linker/general), this is an example configuration to be set in mounted volumes
+If you run the Docker image [available here](https://hub.docker.com/r/riccardone/linker), this is an example configuration to be set in mounted volumes
 ```
 {
   "DataFolder": "/data",
