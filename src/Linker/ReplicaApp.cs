@@ -63,14 +63,18 @@ public class ReplicaApp
 
             var name = $"From-{o.ConnectionName}-To-{d.ConnectionName}";
 
-            var service = new LinkerService(o, d,
+            //var service = new LinkerService(o, d,
+            //    new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
+            //    new FilterService(filters),
+            //    _settings,
+            //    new FileAdjustedStreamRepository(
+            //        Path.Combine(_settings.DataFolder, "positions", $"adjusted_streams_{name}.json"),
+            //        _loggerFactory.CreateLogger<FileAdjustedStreamRepository>()),
+            //    _loggerFactory);
+
+            var service = new LinkerServiceSimplified(o, d,
                 new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
-                new FilterService(filters),
-                _settings,
-                new FileAdjustedStreamRepository(
-                    Path.Combine(_settings.DataFolder, "positions", $"adjusted_streams_{name}.json"),
-                    _loggerFactory.CreateLogger<FileAdjustedStreamRepository>()),
-                _loggerFactory);
+                new FilterService(filters), _settings, _loggerFactory);
 
             services.Add(service);
         }
