@@ -1,8 +1,10 @@
-﻿using System.Text;
-using EventStore.PositionRepository.Gprc;
+﻿using EventStore.PositionRepository.Gprc;
 using KurrentDB.Client;
 using Linker.Core;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Text;
+using System.Xml.Linq;
 
 namespace Linker;
 
@@ -12,14 +14,16 @@ public class ReplicaApp
     private readonly CertManager _certManager;
     private readonly Settings _settings;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IConfiguration _configuration;
 
     public ReplicaApp(ILogger<ReplicaApp> logger, CertManager certManager, Settings settings,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory, IConfiguration configuration)
     {
         _logger = logger;
         _certManager = certManager;
         _settings = settings;
         _loggerFactory = loggerFactory;
+        _configuration = configuration;
     }
 
     public async Task RunAsync()
@@ -30,6 +34,9 @@ public class ReplicaApp
         _logger.LogInformation("BufferSize       = {BufferSize}", _settings.BufferSize);
         _logger.LogInformation("ResolveLinkTos   = {ResolveLinkTos}", _settings.ResolveLinkTos);
         _logger.LogInformation("HandleConflicts  = {HandleConflicts}", _settings.HandleConflicts);
+        _logger.LogInformation("InteractiveMode  = {InteractiveMode}", _settings.InteractiveMode);
+        var defaultLogLevel = _configuration["Logging:LogLevel:Default"];
+        _logger.LogInformation("LogLevel:Default = {LogLevel}", defaultLogLevel);
 
         var services = new List<ILinkerService>();
         ILinkerConnectionBuilder? origin = null;
@@ -61,20 +68,19 @@ public class ReplicaApp
             origin ??= o;
             destination ??= d;
 
-            var name = $"From-{o.ConnectionName}-To-{d.ConnectionName}";
-
-            //var service = new LinkerService(o, d,
+            //var service = new LinkerServiceSimplified(o, d,
             //    new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
-            //    new FilterService(filters),
-            //    _settings,
-            //    new FileAdjustedStreamRepository(
-            //        Path.Combine(_settings.DataFolder, "positions", $"adjusted_streams_{name}.json"),
-            //        _loggerFactory.CreateLogger<FileAdjustedStreamRepository>()),
-            //    _loggerFactory);
+            //    new FilterService(filters), _settings, _loggerFactory);
 
-            var service = new LinkerServiceSimplified(o, d,
+            var name = $"From-{o.ConnectionName}-To-{d.ConnectionName}";
+            var service = new LinkerService(o, d,
                 new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
-                new FilterService(filters), _settings, _loggerFactory);
+                new FilterService(filters),
+                _settings,
+                new FileAdjustedStreamRepository(
+                    Path.Combine(_settings.DataFolder, "positions", $"adjusted_streams_{name}.json"),
+                    _loggerFactory.CreateLogger<FileAdjustedStreamRepository>()),
+                _loggerFactory);
 
             services.Add(service);
         }
@@ -87,10 +93,9 @@ public class ReplicaApp
             await svc.StartAsync();
         }
 
-        if (Environment.GetEnvironmentVariable("LINKER_INTERACTIVE") == "true")
+        if (_settings.InteractiveMode)
         {
-            // Test input loop
-             if (origin != null && destination != null)
+            if (origin != null && destination != null)
             {
                 _ = Task.Run(async () =>
                 {

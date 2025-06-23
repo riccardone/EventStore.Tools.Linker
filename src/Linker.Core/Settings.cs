@@ -7,6 +7,7 @@ public class Settings
     public int BufferSize { get; set; } = 100;
     public bool HandleConflicts { get; set; } = true;
     public bool ResolveLinkTos { get; set; } = false;
+    public bool InteractiveMode { get; set; } = false;
     public IEnumerable<Link> Links { get; set; } = new List<Link>();
 }
 

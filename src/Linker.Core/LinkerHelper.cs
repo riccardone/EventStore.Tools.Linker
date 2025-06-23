@@ -74,15 +74,6 @@ public class LinkerHelper
         return result;
     }
 
-    public int CalculateSpeed(int currentCountPerSec, int previousCountPerSec)
-    {
-        if (currentCountPerSec > 0 && previousCountPerSec == 0)
-            return 0;
-        if (previousCountPerSec == 0)
-            return 0;
-        return currentCountPerSec - previousCountPerSec;
-    }
-
     public IDictionary<string, JsonNode?> DeserializeObject(ReadOnlyMemory<byte> obj)
     {
         if (obj.IsEmpty)

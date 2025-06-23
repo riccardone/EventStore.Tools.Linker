@@ -1,8 +1,10 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Threading.Channels;
 using System.Timers;
 using EventStore.PositionRepository.Gprc;
+using Grpc.Core;
 using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
 using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
@@ -49,6 +51,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private readonly double _significantIncreaseToTriggerIncrease = -0.10;
     public const int MaxAllowedBuffer = 1000;
     public const int MinAllowedBuffer = 1;
+    private const int StatsIntervalMs = 3000;
 
     private readonly ConcurrentDictionary<string, SortedDictionary<ulong, BufferedEvent>> _perStreamBuffers = new();
     private readonly ConcurrentDictionary<string, ulong?> _lastWrittenPerStream = new();
@@ -85,7 +88,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             $"$$PositionStream-{_originConnectionBuilder.ConnectionName}"
         ];
 
-        _timerForStats = new System.Timers.Timer(3000);
+        _timerForStats = new System.Timers.Timer(StatsIntervalMs);
         _timerForStats.Elapsed += TimerForStats_Elapsed;
     }
 
@@ -323,13 +326,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     private async Task AddToAdjustedStreams(string streamId)
     {
-        var updated = false;
-
-        if (_adjustedStartStreams.Add(streamId))
-            updated = true;
-
-        if (!streamId.StartsWith("$$") && _adjustedStartStreams.Add("$$" + streamId))
-            updated = true;
+        var updated = _adjustedStartStreams.Add(streamId) ||
+                      !streamId.StartsWith("$$") && _adjustedStartStreams.Add("$$" + streamId);
 
         if (updated)
             await _adjustedStreamRepository.SaveAsync(_adjustedStartStreams);
@@ -375,9 +373,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         }
 
         if (!_replicaHelper.TryProcessMetadata(evt.Event.EventStreamId, evt.Event.EventNumber, evt.Event.Created,
-                _originConnectionBuilder.ConnectionName,
-                _replicaHelper.DeserializeObject(evt.Event.Metadata),
-                out var enrichedMetadata))
+                _originConnectionBuilder.ConnectionName, metadata, out var enrichedMetadata))
         {
             _logger.LogDebug($"{Name}: Updated global last position to {_lastPosition}");
             return;
@@ -456,11 +452,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         ulong eventNumber = evt.EventNumber.ToUInt64();
         StreamState expectedRevision;
 
-        if (Name.Equals("From-db02-To-db01"))
-        {
-            
-        }
-
         try
         {
             var readResult = _destinationConnection.ReadStreamAsync(Direction.Backwards, evt.StreamId, StreamPosition.End, 1);
@@ -529,12 +520,17 @@ public class LinkerService : ILinkerService, IAsyncDisposable
                 _logger.LogDebug($"{Name}: Stream {evt.StreamId} missing but start adjusted — using StreamState.NoStream for event {eventNumber}");
                 expectedRevision = StreamState.NoStream;
             }
+            else if (await IsTombstonedStream(evt.StreamId))
+            {
+                _logger.LogWarning($"{Name}: Stream {evt.StreamId} is soft deleted. Using NoStream for re-append.");
+                await AddToAdjustedStreams(evt.StreamId); 
+                expectedRevision = StreamState.NoStream;
+            }
             else
             {
                 throw new InvalidOperationException($"Event {eventNumber} cannot be appended to missing stream.");
             }
         }
-       
         if (expectedRevision == StreamState.Any)
         {
             _logger.LogError($"{Name}: Refusing to append with {nameof(StreamState.Any)} to stream {evt.StreamId} (event #{evt.EventNumber}) — this is unsafe for replication.");
@@ -568,6 +564,27 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         }
 
         await UpdateStreamTrackingAsync(evt);
+    }
+
+    private async Task<bool> IsTombstonedStream(string streamId)
+    {
+        try
+        {
+            var original = await _destinationConnection.GetStreamMetadataAsync(streamId);
+            // soft deleted
+            var deletedStream = await _destinationConnection.GetStreamMetadataAsync($"$${streamId}");
+            return true;
+        }
+        catch (StreamDeletedException) 
+        {
+            // TODO test if we end up here for hard deleted streams
+            // and eventually return handle it differently to keep the hard deleted behaviour in the destination
+            return true;
+        }
+        catch (StreamNotFoundException)
+        {
+            return false;
+        }
     }
 
     private async Task<bool> IsMaxAgeOrMaxCountStream(string streamId)
