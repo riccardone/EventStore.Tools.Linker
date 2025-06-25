@@ -64,11 +64,22 @@ public class PeriodicStreamPositionFlusher : IStreamPositionFlusher
         await _flushLock.WaitAsync();
         try
         {
-            var copy = new Dictionary<string, ulong>(_positions);
+            await using var stream = File.Create(_filePath);
+            await using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
 
-            var json = JsonSerializer.Serialize(copy, new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(_filePath, json);
-            _logger.LogDebug($"[Flusher] Flushed {copy.Count} stream positions to {_filePath}");
+            writer.WriteStartObject();
+
+            var count = 0;
+            foreach (var kvp in _positions)
+            {
+                writer.WriteNumber(kvp.Key, kvp.Value);
+                count++;
+            }
+
+            writer.WriteEndObject();
+            await writer.FlushAsync();
+
+            _logger.LogDebug($"[Flusher] Flushed {count} stream positions to {_filePath}");
         }
         catch (Exception ex)
         {
