@@ -20,6 +20,8 @@ The following properties can be configured in the root of your appsettings.json 
   "BufferSize": 100,                 // Initial size of the bounded buffer channel
   "HandleConflicts": true,           // Enables appending conflicts to a special stream instead of failing
   "ResolveLinkTos": false,           // Whether to resolve $> link events in EventStore
+  "InteractiveMode": true,           // Set it to true when you debug locally and you want to pross O or D on the keyboard to add test events
+  "EnableReconciliation": false,     // Set it to true to ensure all the write positions of the streams are updated at start 
   "Links": []                        // List of replication links (see examples below)
 }
 ```
