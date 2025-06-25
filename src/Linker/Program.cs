@@ -13,12 +13,14 @@ internal class Program
         var host = Host.CreateDefaultBuilder(args)
             .ConfigureAppConfiguration((context, config) =>
             {
-                var env = context.HostingEnvironment;
+                config.Sources.Clear();
+
+                var rawEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "dev";
                 var configPath = Environment.GetEnvironmentVariable("LINKER_CONFIG_PATH") ?? "appsettings.json";
 
                 config.SetBasePath(Directory.GetCurrentDirectory());
                 config.AddJsonFile(configPath, optional: true, reloadOnChange: false);
-                config.AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true, reloadOnChange: false);
+                config.AddJsonFile($"appsettings.{rawEnv}.json", optional: true, reloadOnChange: false);
                 config.AddEnvironmentVariables();
             })
             .ConfigureLogging((context, logging) =>

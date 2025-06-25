@@ -1,10 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Text.Json;
 using System.Threading.Channels;
 using System.Timers;
 using EventStore.PositionRepository.Gprc;
-using Grpc.Core;
 using KurrentDB.Client;
 using Microsoft.Extensions.Logging;
 using EventTypeFilter = KurrentDB.Client.EventTypeFilter;
@@ -20,6 +18,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private readonly IFilterService? _filterService;
     private readonly Settings _settings;
     private Position _lastPosition;
+    private Position _originCurrentEnd = Position.Start;
     public string Name { get; }
 
     private readonly ILinkerConnectionBuilder _originConnectionBuilder;
@@ -162,9 +161,14 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _destinationConnection = _destinationConnectionBuilder.Build();
         _originConnection = _originConnectionBuilder.Build();
 
+        await UpdateOriginCurrentEndAsync();
+
         await _flusherForStreamPositions.StartAsync();
 
-        await ReconcileStreamPositions();
+        if (_settings.EnableReconciliation)
+            await ReconcileStreamPositions();
+        else
+            _logger.LogWarning($"{Name}: Reconciliation is disabled — startup will skip verifying stream write positions.");
 
         _started = true;
 
@@ -268,6 +272,29 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             await _originConnection.DisposeAsync();
         if (_destinationConnection != null)
             await _destinationConnection.DisposeAsync();
+    }
+
+    private async Task UpdateOriginCurrentEndAsync()
+    {
+        if (_originConnection == null)
+            return;
+
+        try
+        {
+            var result = _originConnection.ReadAllAsync(Direction.Backwards, Position.End, maxCount: 1, resolveLinkTos: false, cancellationToken: _cts.Token);
+            await foreach (var evt in result.WithCancellation(_cts.Token))
+            {
+                if (evt.OriginalPosition.HasValue)
+                {
+                    _originCurrentEnd = evt.OriginalPosition.Value;
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, $"{Name}: Failed to update origin current end position.");
+        }
     }
 
     private async Task ProcessChannelEventsAsync()
@@ -697,6 +724,15 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             avgLatency = _latencySamples.Count > 0 ? (long)_latencySamples.Average() : 0;
         }
 
+        double progressPercent = 0;
+        if (_originCurrentEnd > Position.Start && _lastPosition > Position.Start)
+        {
+            var origin = _originCurrentEnd.CommitPosition + _originCurrentEnd.PreparePosition;
+            var current = _lastPosition.CommitPosition + _lastPosition.PreparePosition;
+            if (origin > 0)
+                progressPercent = Math.Min(100, (double)current / origin * 100);
+        }
+
         lock (_adaptiveLock)
         {
             _replicationSamples.Add(replicatedThisInterval);
@@ -745,7 +781,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             }
         }
 
-        _logger.LogInformation($"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}/{_bufferSize} ({bufferRatio:P0}), latency: {avgLatency}ms");
+        _logger.LogInformation(
+            $"{Name} stats: replicated {replicatedThisInterval} events, total: {totalReplicated}, buffer: {bufferSize}/{_bufferSize} ({bufferRatio:P0}), latency: {avgLatency}ms, progress: {progressPercent:F1}%");
     }
 
     private async Task RestartServiceAsync()

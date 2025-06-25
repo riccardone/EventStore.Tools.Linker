@@ -3,11 +3,12 @@
 public class Settings
 {
     public string DataFolder { get; set; } = "/data"; 
-    public bool AutomaticTuning { get; set; } = true;
+    public bool AutomaticTuning { get; set; } = false;
     public int BufferSize { get; set; } = 100;
     public bool HandleConflicts { get; set; } = true;
     public bool ResolveLinkTos { get; set; } = false;
     public bool InteractiveMode { get; set; } = false;
+    public bool EnableReconciliation { get; set; } = true;
     public IEnumerable<Link> Links { get; set; } = new List<Link>();
 }
 
