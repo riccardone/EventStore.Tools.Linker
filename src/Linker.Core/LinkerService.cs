@@ -311,6 +311,7 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
+            // "Specified argument was out of the range of valid values. (Parameter 'eventStreamId')"
             _logger.LogError(ex, $"{Name}: Channel processing error: {ex.GetBaseException().Message}");
             await RestartServiceAsync();
         }
@@ -569,6 +570,12 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             await _destinationConnection.AppendToStreamAsync(evt.StreamId, expectedRevision, [evt.EventData]);
             _lastPosition = evt.OriginalPosition;
             _positionRepository.Set(_lastPosition);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("eventStreamId"))
+        {
+            _logger.LogError(ex, $"{Name}: Skipping event due to invalid stream ID. Stream={evt.StreamId}, EventNumber={evt.EventNumber}");
+            await UpdateStreamTrackingAsync(evt);
+            return;
         }
         catch (WrongExpectedVersionException ex)
         {
