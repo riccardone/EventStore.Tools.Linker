@@ -57,6 +57,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     private readonly HashSet<string> _streamsToBeExcluded;
     private readonly HashSet<string> _adjustedStartStreams = new();
     private readonly IAdjustedStreamRepository _adjustedStreamRepository;
+    private bool _forceChannelException;
+    public bool RestartRequested;
 
     public LinkerService(ILinkerConnectionBuilder originBuilder, ILinkerConnectionBuilder destinationBuilder,
         IPositionRepository positionRepository, IFilterService? filterService, Settings settings, IAdjustedStreamRepository adjustedStreamRepository,
@@ -91,6 +93,11 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _timerForStats.Elapsed += TimerForStats_Elapsed;
     }
 
+    public void ForceChannelExceptionOnce()
+    {
+        _forceChannelException = true;
+    }
+
     private Channel<BufferedEvent> CreateNewChannel(int size)
     {
         return Channel.CreateBounded<BufferedEvent>(new BoundedChannelOptions(size)
@@ -122,8 +129,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         while (_channel.Reader.TryRead(out var evt))
             buffered.Add(evt);
 
-        _cts.Dispose();
-        _cts = new CancellationTokenSource();
         _bufferSize = newSize;
         _channel = CreateNewChannel(_bufferSize);
 
@@ -142,9 +147,13 @@ public class LinkerService : ILinkerService, IAsyncDisposable
 
     public async Task<bool> StartAsync()
     {
-        if (_started) return true;
+        if (_started)
+            return true;
 
-        await StopAsync();
+        // TODO consider remove stop/start and only have one restart method that does stop/start and it's clearer
+        await StopAsync(); 
+
+        _cts = new CancellationTokenSource();
 
         if (!_positionRepository.TryGet(out _lastPosition))
             _lastPosition = Position.Start;
@@ -155,14 +164,10 @@ public class LinkerService : ILinkerService, IAsyncDisposable
             _adjustedStartStreams.Add(s);
         _logger.LogInformation($"{Name}: Loaded {_adjustedStartStreams.Count} adjusted start streams from disk");
 
-        if (_lastPosition.Equals(Position.Start))
-            _logger.LogInformation("No last position found. Starting from Position.Start");
-
         _destinationConnection = _destinationConnectionBuilder.Build();
         _originConnection = _originConnectionBuilder.Build();
 
         await UpdateOriginCurrentEndAsync();
-
         await _flusherForStreamPositions.StartAsync();
 
         if (_settings.EnableReconciliation)
@@ -170,16 +175,48 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         else
             _logger.LogWarning($"{Name}: Reconciliation is disabled — startup will skip verifying stream write positions.");
 
-        _started = true;
-
         _timerForStats.Start();
-
         _channel = CreateNewChannel(_bufferSize);
 
         StartWorkerTasks();
 
+        _started = true;
         _logger.LogInformation($"{Name} started.");
 
+        return true;
+    }
+
+    public async Task<bool> StopAsync()
+    {
+        if (!_started)
+            return true;
+
+        await _cts.CancelAsync();
+        _timerForStats.Stop();
+
+        _channel.Writer.TryComplete();
+
+        if (_subscriptionTask is not null)
+        {
+            try { await _subscriptionTask; } catch (OperationCanceledException) { }
+        }
+
+        if (_processingTask is not null)
+        {
+            try { await _processingTask; } catch (OperationCanceledException) { }
+        }
+
+        _cts.Dispose();
+        _cts = null;
+
+        _subscriptionTask = null;
+        _processingTask = null;
+
+        await _flusherForStreamPositions.StopAsync();
+        await DisposeConnectionsAsync();
+
+        _started = false;
+        _logger.LogInformation($"{Name} stopped.");
         return true;
     }
 
@@ -237,35 +274,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         _logger.LogInformation($"{Name}: ReconcileStreamPositions completed. Total streams reconciliations processed: {total}");
     }
 
-    public async Task<bool> StopAsync()
-    {
-        if (!_started)
-            return true;
-
-        await _cts.CancelAsync();
-        _timerForStats.Stop();
-        _channel.Writer.TryComplete();
-
-        if (_subscriptionTask is not null)
-        {
-            try { await _subscriptionTask; } catch (OperationCanceledException) { }
-        }
-
-        if (_processingTask is not null)
-        {
-            try { await _processingTask; } catch (OperationCanceledException) { }
-            _processingTask = null;
-        }
-
-        await _flusherForStreamPositions.StopAsync();
-        
-        await DisposeConnectionsAsync();
-
-        _started = false;
-        _logger.LogInformation($"{Name} stopped.");
-        return true;
-    }
-
     private async Task DisposeConnectionsAsync()
     {
         if (_originConnection != null)
@@ -304,6 +312,12 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         {
             await foreach (var evt in _channel.Reader.ReadAllAsync(_cts.Token))
             {
+                if (_forceChannelException)
+                {
+                    _forceChannelException = false;
+                    throw new Exception("Simulated test exception in ProcessChannelEventsAsync");
+                }
+
                 _logger.LogTrace($"{Name}: Dequeued {evt.EventNumber}@{evt.StreamId}");
                 await ProcessBufferedEvent(evt);
             }
@@ -311,9 +325,8 @@ public class LinkerService : ILinkerService, IAsyncDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            // "Specified argument was out of the range of valid values. (Parameter 'eventStreamId')"
             _logger.LogError(ex, $"{Name}: Channel processing error: {ex.GetBaseException().Message}");
-            await RestartServiceAsync();
+            RestartRequested = true;
         }
     }
 
@@ -796,7 +809,6 @@ public class LinkerService : ILinkerService, IAsyncDisposable
     {
         _logger.LogWarning($"{Name} restarting after error...");
         await Task.Delay(1000);
-        await StopAsync();
         await StartAsync();
     }
 

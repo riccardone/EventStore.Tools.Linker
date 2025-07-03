@@ -4,7 +4,6 @@ using Linker.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text;
-using System.Xml.Linq;
 
 namespace Linker;
 
@@ -68,10 +67,6 @@ public class ReplicaApp
             origin ??= o;
             destination ??= d;
 
-            //var service = new LinkerServiceSimplified(o, d,
-            //    new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
-            //    new FilterService(filters), _settings, _loggerFactory);
-
             var name = $"From-{o.ConnectionName}-To-{d.ConnectionName}";
             var service = new LinkerService(o, d,
                 new PositionRepository($"PositionStream-{d.ConnectionName}", "PositionUpdated", d.Build()),
@@ -92,6 +87,30 @@ public class ReplicaApp
             _logger.LogInformation($"Starting {svc.Name}");
             await svc.StartAsync();
         }
+
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                foreach (var svc in services)
+                {
+                    if (svc is not LinkerService linkerSvc || !linkerSvc.RestartRequested) 
+                        continue;
+                    linkerSvc.RestartRequested = false;
+                    _logger.LogWarning($"Restarting service {linkerSvc.Name} after channel error...");
+                    try
+                    {
+                        await linkerSvc.StopAsync();
+                        await linkerSvc.StartAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Failed to restart service {linkerSvc.Name}");
+                    }
+                }
+                await Task.Delay(1000);
+            }
+        });
 
         if (_settings.InteractiveMode)
         {
@@ -118,6 +137,9 @@ public class ReplicaApp
                                 _logger.LogInformation($"Write the {destination.ConnectionName} event type:");
                                 var dType = Console.ReadLine();
                                 await AppendTestEvent(dStream!, dType!, destination);
+                                break;
+                            case ConsoleKey.E:
+                                ((LinkerService)services.First()).ForceChannelExceptionOnce();
                                 break;
                         }
                     }
